@@ -33,7 +33,6 @@ int main(int argc, char* argv[]) {
     char buffer[BUF_LEN];
     
     time_t rawtime;
-	struct tm* timeinfo;
 
     //creazione socket UPD non bloccante
     sd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -51,9 +50,6 @@ int main(int argc, char* argv[]) {
         exit(0);
     }
     
-    //lunghezza dell'indirizzo del peer
-  /*  addrlen = sizeof(peer_addr);*/
-    
 	//reset dei descrittori
 	FD_ZERO(&master);			//svuota master
 	FD_ZERO(&read_fds);			//svuota read_fds
@@ -65,16 +61,11 @@ int main(int argc, char* argv[]) {
 	
         
     printf("******************* DS COVID STARTED *******************\n");
-    printf("Digita un comando:\n");
-    printf("1) help --> mostra i dettagli dei comandi\n");
-    printf("2) showpeers --> mostra un elenco dei peer connessi\n");
-    printf("3) showneighbor <peer> --> mostra i neighbor di un peer\n");
-    printf("4) esc --> chiude il DS\n");
-    
+    printf("Digita un comando:\n");    
     
     while(1) {
 
-		read_fds = master;
+		read_fds = master;  
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
 	
@@ -86,7 +77,6 @@ int main(int argc, char* argv[]) {
 			if(ret < 0)
 				perror("Errore richiesta dal peer\n");
 			time(&rawtime);
-			//timeinfo = localtime(&rawtime);
 			sprintf(buffer, "%s", ctime(&rawtime));
 			len = strlen(buffer) + 1;
 			ret = sendto(sd, buffer, len, 0,
@@ -94,18 +84,44 @@ int main(int argc, char* argv[]) {
 			if (ret < 0)
 		    	perror("Errore invio risposta al peer\n");
 
-			//close(sd);
-
-			//FD_CLR(sd, &master);
 		}
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
 
 			scanf("%s", &cmd);
 			//printf("%s", cmd);
-			printf("Comando ricevuto: %s\n", cmd);
-	
-			//close(0);
-			//FD_CLR(0, &master);
+			//printf("Comando ricevuto: %s\n", cmd);
+
+			if(strcmp(cmd, "help") == 0) {
+				printf("\nDettaglio comandi:\n");
+				printf("1) help 		--> mostra i dettagli dei comandi\n");
+				printf("2) showpeers 		--> mostra un elenco dei peer connessi\n");
+				printf("3) showneighbor <peer> 	--> mostra i neighbor di un peer\n");
+				printf("4) esc 			--> chiude il DS\n\n");
+			}
+
+			if(strcmp(cmd, "showpeers") == 0) {
+				
+			}
+
+			if(strcmp(cmd, "there's a problem'") == 0) {
+				
+			}
+
+			if(strcmp(cmd, "esc") == 0) {
+
+				sprintf(buffer, "%s", "ESC");
+				len = strlen(buffer) + 1;
+				ret = sendto(sd, buffer, len, 0,
+				     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
+
+				close(sd);
+				FD_CLR(sd, &master);
+				
+				close(0);
+				FD_CLR(0, &master);
+
+				exit(0);
+			}			
 		}
 	}
 
