@@ -14,6 +14,13 @@
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 #define REQ_LEN         4       //"REQ\0"
 
+struct Boot {
+	char cmd[BUFFER_SIZE];
+	char ip[ADDR_LEN];
+	char port[PORT_LEN];
+};
+
+struct Boot peer_boot;
 
 int main(int argc, char* argv[]) {
     
@@ -74,8 +81,21 @@ int main(int argc, char* argv[]) {
 			addrlen = sizeof(peer_addr);
 			ret = recvfrom(sd, buffer, REQ_LEN, 0,
 		            (struct sockaddr*)&peer_addr, &addrlen);
-			if(ret < 0)
+			if(ret < 0) {
 				perror("Errore richiesta dal peer\n");
+				exit(1);
+			}
+			
+			sscanf(buffer, "%s,%s,%s", &peer_boot.cmd, &peer_boot.ip, &peer_boot.port);
+
+			/*
+			tok = strtok(buffer, ",");
+			while(tok != NULL) {
+				printf("%s\n", tok);
+				tok = strtok(NULL, ",");
+			}*/
+
+			printf("Ho ricevuto la struct:\n%s\n%s\n%s\n", peer_boot.cmd, peer_boot.ip, peer_boot.port);
 			time(&rawtime);
 			sprintf(buffer, "%s", ctime(&rawtime));
 			len = strlen(buffer) + 1;
