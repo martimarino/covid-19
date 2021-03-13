@@ -10,32 +10,26 @@
 #include <time.h>
 #include <poll.h>
 #include <errno.h>
+#include "shared.h"
 
-#define BUFFER_SIZE   1024
 #define POLLING_TIME  5
 #define RES_LEN       26    // Wed Dec 09 17:41:29 2020\0\n
-#define ADDR_LEN	  10
-#define PORT_LEN      17
 
 int ret, sd, len;
 char localhost[ADDR_LEN] = "127.0.0.1\0";
 char* peer_port;
 //peer_port = malloc(ADDR_LEN-1);
 struct sockaddr_in srv_addr, my_addr;
-char buffer[BUFFER_SIZE];
+char buffer[BUFFER_LEN];
 
-// Comando da inviare al server
-//char* cmd = "REQ\0";
-//cmd = malloc(17);				//max è FLOOD_FOR_ENTRIES = 17
-char command[BUFFER_SIZE];
+// comando da inviare al server
+char command[CMD_LEN];
 
-struct Boot {
-	char cmd[BUFFER_SIZE];
-	char ip[ADDR_LEN];
-	char port[PORT_LEN];
-};
+// informazioni da inviare al server
+char info[BUFFER_LEN];
 
 struct Boot boot_msg;
+struct Request req;
 
 void peer_connect() {
     /* Creazione socket */
@@ -71,26 +65,44 @@ int main(int argc, char* argv[]){
 	}
 	if(argc == 2)
 		peer_port = argv[argc-1];
-	
-	printf("ARGC: %d\nPORT: %s\n", argc, peer_port);	
+		
 	
 	peer_connect();
 
     do {
-		strcpy(boot_msg.cmd, "BOOT"); 
-		strcpy(boot_msg.ip, localhost);
-		strcpy(boot_msg.port, peer_port);
-		printf("%s,%s,%s\n", boot_msg.cmd, boot_msg.ip, boot_msg.port);
-		sprintf(command, "%s,%s,%s", boot_msg.cmd, boot_msg.ip, boot_msg.port);
+		// compilo la struct req
+		strcpy(req.cmd, "BOOT\0"); 
+		req.howmany = ADDR_LEN + PORT_LEN +1;	//16+7+virgola
 
-        // Tento di inviare la richiesta continuamente        
+		//copio la struct nel buffer command da inviare
+		sprintf(command, "%s,%d", req.cmd, req.howmany);
+
+		printf("COMMAND: %s\n", command);
+        // Tento di fare il boot continuamente        
         ret = sendto(sd, command, sizeof(command), 0,
                        (struct sockaddr*)&srv_addr, sizeof(srv_addr));
         // Se la richiesta non e' stata inviata vado a dormire per un poco
         if (ret < 0)
                 sleep(POLLING_TIME);
     } while (ret < 0);
-    
+printf("Comando di boot inviato\n");
+	do {
+		//compilo la struct boot_msg
+		strcpy(boot_msg.ip, localhost);
+		strcpy(boot_msg.port, peer_port);
+
+		//copio la struct nel buffer command da inviare
+		sprintf(info, "%s,%s", boot_msg.ip, boot_msg.port);
+
+		printf("INFO: %s\n", info);
+        // Tento di inviare le informazioni di boot continuamente        
+        ret = sendto(sd, info, sizeof(info), 0,
+                       (struct sockaddr*)&srv_addr, sizeof(srv_addr));
+        // Se la richiesta non e' stata inviata vado a dormire per un poco
+        if (ret < 0)
+                sleep(POLLING_TIME);
+    } while (ret < 0);
+printf("Info boot inviate\n");
     do {
         // Tento di ricevere i dati dal server  
         ret = recvfrom(sd, buffer, RES_LEN, 0, 
@@ -99,10 +111,13 @@ int main(int argc, char* argv[]){
         // Se non ricevo niente vado a dormire per un poco
         if (ret < 0)
             sleep(POLLING_TIME);
-//		if(strcmp(buffer, "ESC") == 0)
-//			exit(0);
+		if(strcmp(buffer, "ESC") == 0) {
+			printf("Terminazione forzata\n");
+			close(sd);
+			exit(0);
+		}
     } while(ret < 0);
-    
+
 	//free(peer_port);
     printf("%s\n", buffer);
 

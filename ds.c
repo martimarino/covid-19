@@ -8,26 +8,20 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
+#include "shared.h"
 
 #define MAX_PEER        10
-#define BUF_LEN         1024
 #define POLLING_TIME    5       //controllo ogni 5 secondi
-#define REQ_LEN         4       //"REQ\0"
-
-struct Boot {
-	char cmd[BUFFER_SIZE];
-	char ip[ADDR_LEN];
-	char port[PORT_LEN];
-};
 
 struct Boot peer_boot;
+struct Request peer_req;
 
 int main(int argc, char* argv[]) {
     
     int num_peer = 0;   //numero peer registrati
     int i;
     int ret, sd, len, addrlen, newfd;
-	char cmd[BUF_LEN];
+	char cmd[BUFFER_LEN];
 	char *tok;		//puntatore per la strtok()
 
 	fd_set master;		//set di tutti i descrittori
@@ -37,7 +31,7 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in my_addr;//, peer_addr;    //struct per indirizzi
     struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
     
-    char buffer[BUF_LEN];
+    char buffer[BUFFER_LEN];
     
     time_t rawtime;
 
@@ -79,30 +73,38 @@ int main(int argc, char* argv[]) {
 		if (FD_ISSET(sd, &read_fds)) {  //sd pronto in lettura
 	
 			addrlen = sizeof(peer_addr);
-			ret = recvfrom(sd, buffer, REQ_LEN, 0,
+			ret = recvfrom(sd, buffer, CMD_LEN, 0,
 		            (struct sockaddr*)&peer_addr, &addrlen);
 			if(ret < 0) {
 				perror("Errore richiesta dal peer\n");
 				exit(1);
 			}
+			printf("COMMAND RICEVUTO: %s\n", buffer);
+		
+			sscanf(buffer, "%s,%d", &peer_req.cmd, &peer_req.howmany);
+	
+			if(strcmp(peer_req.cmd, "BOOT") == 0) {
 			
-			sscanf(buffer, "%s,%s,%s", &peer_boot.cmd, &peer_boot.ip, &peer_boot.port);
+				ret = recvfrom(sd, buffer, peer_req.howmany, 0,
+				        (struct sockaddr*)&peer_addr, &addrlen);
+				if(ret < 0) {
+					perror("Errore richiesta dal peer\n");
+					exit(1);
+				}
 
-			/*
-			tok = strtok(buffer, ",");
-			while(tok != NULL) {
-				printf("%s\n", tok);
-				tok = strtok(NULL, ",");
-			}*/
+				printf("BUFFER RICEVUTO: %s\n", buffer);
 
-			printf("Ho ricevuto la struct:\n%s\n%s\n%s\n", peer_boot.cmd, peer_boot.ip, peer_boot.port);
-			time(&rawtime);
-			sprintf(buffer, "%s", ctime(&rawtime));
-			len = strlen(buffer) + 1;
-			ret = sendto(sd, buffer, len, 0,
-		         (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
-			if (ret < 0)
-		    	perror("Errore invio risposta al peer\n");
+				sscanf(buffer, "%s,%s", &peer_boot.ip, &peer_boot.port);
+
+				printf("Ho ricevuto la struct: %s\n", peer_boot.ip);
+				time(&rawtime);
+				sprintf(buffer, "%s", ctime(&rawtime));
+				len = strlen(buffer) + 1;
+				ret = sendto(sd, buffer, len, 0,
+				     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
+				if (ret < 0)
+					perror("Errore invio risposta al peer\n");
+			}
 
 		}
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
