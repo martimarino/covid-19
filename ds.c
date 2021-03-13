@@ -13,7 +13,7 @@
 #define MAX_PEER        10
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 
-struct Boot peer_boot;
+//struct Boot peer_boot;
 struct Request peer_req;
 
 int main(int argc, char* argv[]) {
@@ -21,8 +21,10 @@ int main(int argc, char* argv[]) {
     int num_peer = 0;   //numero peer registrati
     int i;
     int ret, sd, len, addrlen, newfd;
-	char cmd[BUFFER_LEN];
-	char *tok;		//puntatore per la strtok()
+	char command[CMD_LEN+1];
+	char peer_ip[ADDR_LEN+1];
+	int peer_port;
+
 
 	fd_set master;		//set di tutti i descrittori
 	fd_set read_fds;	//set dei descrittori in lettura
@@ -81,22 +83,13 @@ int main(int argc, char* argv[]) {
 			}
 			printf("COMMAND RICEVUTO: %s\n", buffer);
 		
-			sscanf(buffer, "%s,%d", &peer_req.cmd, &peer_req.howmany);
+			sscanf(buffer, "%s,%s,%d", &command, &peer_ip, &peer_port);
 	
-			if(strcmp(peer_req.cmd, "BOOT") == 0) {
-			
-				ret = recvfrom(sd, buffer, peer_req.howmany, 0,
-				        (struct sockaddr*)&peer_addr, &addrlen);
-				if(ret < 0) {
-					perror("Errore richiesta dal peer\n");
-					exit(1);
-				}
+			if(strcmp(command, "BOOT") == 0) {
 
 				printf("BUFFER RICEVUTO: %s\n", buffer);
 
-				sscanf(buffer, "%s,%s", &peer_boot.ip, &peer_boot.port);
-
-				printf("Ho ricevuto la struct: %s\n", peer_boot.ip);
+				printf("Ho ricevuto la struct: %s\n", command, peer_ip, peer_port);
 				time(&rawtime);
 				sprintf(buffer, "%s", ctime(&rawtime));
 				len = strlen(buffer) + 1;
@@ -109,11 +102,11 @@ int main(int argc, char* argv[]) {
 		}
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
 
-			scanf("%s", &cmd);
+			scanf("%s", &command);
 			//printf("%s", cmd);
 			//printf("Comando ricevuto: %s\n", cmd);
 
-			if(strcmp(cmd, "help") == 0) {
+			if(strcmp(command, "help") == 0) {
 				printf("\nDettaglio comandi:\n");
 				printf("1) help 		--> mostra i dettagli dei comandi\n");
 				printf("2) showpeers 		--> mostra un elenco dei peer connessi\n");
@@ -121,15 +114,15 @@ int main(int argc, char* argv[]) {
 				printf("4) esc 			--> chiude il DS\n\n");
 			}
 
-			if(strcmp(cmd, "showpeers") == 0) {
+			if(strcmp(command, "showpeers") == 0) {
 				
 			}
 
-			if(strcmp(cmd, "there's a problem'") == 0) {
+			if(strcmp(command, "there's a problem'") == 0) {
 				
 			}
 
-			if(strcmp(cmd, "esc") == 0) {
+			if(strcmp(command, "esc") == 0) {
 
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
