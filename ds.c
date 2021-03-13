@@ -13,31 +13,33 @@
 #define MAX_PEER        10
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 
+int num_peer = 0;   //numero peer registrati
+int i;
+int ret, sd, len, addrlen, newfd;
+char command[CMD_LEN+1];
+char peer_ip[ADDR_LEN+1];
+int peer_port;
+char ds_port[PORT_LEN];
+char* tmp_port;
+
+
+fd_set master;		//set di tutti i descrittori
+fd_set read_fds;	//set dei descrittori in lettura
+int fdmax;
+
+struct sockaddr_in my_addr;//, peer_addr;    //struct per indirizzi
+struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
+
+char buffer[BUFFER_LEN];
+
+time_t rawtime;
+
 //struct Boot peer_boot;
 struct Request peer_req;
 
-int main(int argc, char* argv[]) {
-    
-    int num_peer = 0;   //numero peer registrati
-    int i;
-    int ret, sd, len, addrlen, newfd;
-	char command[CMD_LEN+1];
-	char peer_ip[ADDR_LEN+1];
-	int peer_port;
-
-
-	fd_set master;		//set di tutti i descrittori
-	fd_set read_fds;	//set dei descrittori in lettura
-	int fdmax = 2;
-
-    struct sockaddr_in my_addr;//, peer_addr;    //struct per indirizzi
-    struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
-    
-    char buffer[BUFFER_LEN];
-    
-    time_t rawtime;
-
-    //creazione socket UPD non bloccante
+void ds_connect() {
+	
+	//creazione socket UPD non bloccante
     sd = socket(AF_INET, SOCK_DGRAM, 0);
     
     //creazione indirizzo di bind
@@ -52,6 +54,34 @@ int main(int argc, char* argv[]) {
         perror("Bind non riuscita\n");
         exit(0);
     }
+}
+
+int main(int argc, char* argv[]) {
+   
+
+	ds_connect();
+
+	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
+	if(ds_port == NULL) {
+		printf("Memory not allocated\n");
+		exit(0);
+	}
+
+	// Estraggo il numero di porta
+	if(argc == 1) {
+		printf("Comando non riconosciuto: inserire numero di porta\n");
+		exit(1);
+	}
+	if(argc > 2) {
+		printf("Comando non riconosciuto\n");
+		exit(1);
+	}
+	if(argc == 2){
+		strcpy(tmp_port, argv[argc-1]);
+		strcpy(ds_port, tmp_port);		
+		printf("NUMERO DI PORTA: %s\n", ds_port);
+	}
+
     
 	//reset dei descrittori
 	FD_ZERO(&master);			//svuota master
@@ -60,7 +90,7 @@ int main(int argc, char* argv[]) {
 	FD_SET(0, &master);			//aggiunge stdin a master
 	FD_SET(sd, &master);		//aggiunge sd a master
 
-	fdmax = sd+1;
+	fdmax = sd;
 	
         
     printf("******************* DS COVID STARTED *******************\n");
@@ -81,13 +111,13 @@ int main(int argc, char* argv[]) {
 				perror("Errore richiesta dal peer\n");
 				exit(1);
 			}
-			printf("COMMAND RICEVUTO: %s\n", buffer);
+			printf("Comando ricevuto: %s\n", buffer);
 		
 			sscanf(buffer, "%s,%s,%d", &command, &peer_ip, &peer_port);
 	
 			if(strcmp(command, "BOOT") == 0) {
 
-				printf("BUFFER RICEVUTO: %s\n", buffer);
+				printf("Buffer ricevuto: %s\n", buffer);
 
 				printf("Ho ricevuto la struct: %s\n", command, peer_ip, peer_port);
 				time(&rawtime);
@@ -134,6 +164,8 @@ int main(int argc, char* argv[]) {
 				
 				close(0);
 				FD_CLR(0, &master);
+
+				free(tmp_port);
 
 				exit(0);
 			}			
@@ -194,8 +226,14 @@ int main(int argc, char* argv[]) {
             } while (ret < 0);
         }
     }*/
-    
-    close(sd);
+
+	close(sd);
+	FD_CLR(sd, &master);
+	
+	close(0);
+	FD_CLR(0, &master);
+
+	free(tmp_port);
     
 }
 
