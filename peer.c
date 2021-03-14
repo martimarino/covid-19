@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <time.h>
+#include <sys/time.h>
 #include <poll.h>
 #include <errno.h>
 #include "shared.h"
@@ -15,7 +15,7 @@
 #define POLLING_TIME  5
 #define RES_LEN       26    // Wed Dec 09 17:41:29 2020\0\n
 
-int ret, sd, len;
+int ret, sd, len, i;
 char localhost[ADDR_LEN] = "127.0.0.1\0";
 char peer_port[PORT_LEN];
 char* tmp_port;
@@ -23,6 +23,7 @@ int peer_connected = 0;
 char command[CMD_LEN+1];
 char first_arg[7];
 char second_arg[8];
+char third_arg[6];
 
 struct sockaddr_in srv_addr, my_addr;
 char buffer[BUFFER_LEN];
@@ -35,6 +36,8 @@ struct Request req;
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
 int fdmax;
+
+char *token;
 
 void peer_connect() {
     /* Creazione socket */
@@ -64,7 +67,13 @@ void peer_connect() {
 int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
-	if(peer_port == NULL) {
+	if(tmp_port == NULL) {
+		printf("Memory not allocated\n");
+		exit(0);
+	}
+
+	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
+	if(token == NULL) {
 		printf("Memory not allocated\n");
 		exit(0);
 	}
@@ -102,15 +111,38 @@ int main(int argc, char* argv[]){
 
 			if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
 
+				//riceve comandi dal server
 				
 			}
 
 			if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
-
-				scanf("%s %s %s", &command, &first_arg, &second_arg);
-				printf("Comando ricevuto: %s, %s, %s\n", command, first_arg, second_arg);
-				//sscanf(command, "%s %s %s", , &ds_addr, &ds_port);
 			
+				scanf("%[^\n]", &buffer);
+				token = strtok(buffer, " ");
+
+				for(i = 0; token != NULL; i++) {
+					printf(" %s\n", token);
+					
+					switch(i) {
+						case 0:
+							sscanf(token, "%s", &command);
+							break;
+						case 1:
+							sscanf(token, "%s", &first_arg);
+							break;
+						case 2:
+							sscanf(token, "%s", &second_arg);
+							break;
+						case 3:
+							sscanf(token, "%s", &third_arg);
+							break;
+						default:
+							printf("Comando non riconosciuto\n");
+					}
+					
+					token = strtok(NULL, " ");
+				}
+
 
 				if(strcmp(command, "start") == 0){
 
@@ -146,6 +178,8 @@ int main(int argc, char* argv[]){
 				
 				if(strcmp(command, "stop") == 0) {	//va fatta la strtok
 					printf("Terminazione forzata\n");
+					free(tmp_port);
+					free(token);
 					close(sd);
 					exit(0);
 				}
@@ -153,6 +187,7 @@ int main(int argc, char* argv[]){
 	} //while
 
 	free(tmp_port);
+	free(token);
     printf("%s\n", buffer);
 
     close(sd);
