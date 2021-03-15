@@ -15,7 +15,7 @@
 
 int num_peer = 0;   //numero peer registrati
 int i, j, k;
-int ret, sd, len, addrlen, newfd;
+int ret, sd, len, addrlen;
 char command[CMD_LEN+1];
 char peer_ip[ADDR_LEN+1];
 char peer_port[PORT_LEN+1];
@@ -24,13 +24,14 @@ char* tmp_port;
 
 char* token;
 char first_arg[BUFFER_LEN];
+char second_arg[BUFFER_LEN];
 
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
 int fdmax;
 
-struct sockaddr_in my_addr;//, peer_addr;    //struct per indirizzi
-struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
+struct sockaddr_in my_addr, connecting_addr;    //struct per indirizzi
+struct sockaddr_in peer_registered[MAX_PEER];   //array indirizzi registrati
 
 char buffer[BUFFER_LEN];
 
@@ -56,13 +57,36 @@ void ds_connect() {
         perror("Bind non riuscita\n");
         exit(0);
     }
-	addrlen = sizeof(peer_addr);
 
 	fdmax = sd;
 	printf("Connessione effettuata\n");
-	printf("FDMAX: %i\n", fdmax);
-	printf("SD: %i\n", sd);
+//	printf("FDMAX: %i\n", fdmax);
+//	printf("SD: %i\n", sd);
 
+}
+
+void parse_string(char buffer[]) {
+
+	token = strtok(buffer, " ");
+
+	for(i = 0; token != NULL; i++) {
+
+		switch(i) {
+			case 0:
+				sscanf(token, "%s", &command);
+				break;
+			case 1:
+				sscanf(token, "%s", &first_arg);
+				break;
+			case 2:
+				sscanf(token, "%s", &second_arg);
+				break;
+			default:
+				printf("Comando non riconosciuto\n");
+		}
+		
+		token = strtok(NULL, " ");
+	} 
 }
 
 int main(int argc, char* argv[]) {
@@ -116,14 +140,15 @@ int main(int argc, char* argv[]) {
 		read_fds = master;  
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
-printf("SD: %i\n", sd);
+
 		if (FD_ISSET(sd, &read_fds)) {  //sd pronto in lettura
 
 			printf("Sto per ricevere...\n");
 
 			do {
+				addrlen = sizeof(connecting_addr);
 				ret = recvfrom(sd, buffer, BUFFER_LEN, 0,
-						(struct sockaddr*)&peer_addr, &addrlen);
+						(struct sockaddr*)&connecting_addr, &addrlen);
 				if(ret < 0) {
 					perror("Errore richiesta dal peer\n");
 					exit(1);
@@ -131,31 +156,34 @@ printf("SD: %i\n", sd);
 				printf("Comando ricevuto: %s\n", buffer);
 			} while (ret < 0);
 
-			
-			sscanf(buffer, "%s,%s,%s", &command, &peer_ip, &peer_port);
+			parse_string(buffer);
+/*
 printf("COMMAND: %s\n", command);
-printf("PEER_IP: %s\n", peer_ip);
-printf("PEER_PORT: %i\n", peer_port);
+printf("PEER_IP: %s\n", first_arg);
+printf("PEER_PORT: %s\n", second_arg);
+*/
 			if(strcmp(command, "BOOT") == 0) {
+
+				num_peer++;
+				peer_registered[num_peer] = connecting_addr;
 
 				printf("Ricevuta richiesta di boot: %s\n", buffer);
 
-				printf("Ho ricevuto la struct: %s, %s, %s\n", command, peer_ip, peer_port);
 				time(&rawtime);
 				sprintf(buffer, "%s", ctime(&rawtime));
-				len = strlen(buffer) + 1;
 
-				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
+				ret = sendto(sd, buffer, BUFFER_LEN, 0,
+				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
 					perror("Errore invio risposta al peer\n");
+				printf("FINE SEND TO\n");
 			} 
 
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
 			scanf("%[^\n]%*c", buffer);
-		printf("DA TASTIERA: %s\n", buffer);
+		
 			token = strtok(buffer, " ");
 
 			for(i = 0; token != NULL; i++) {
@@ -195,7 +223,7 @@ printf("PEER_PORT: %i\n", peer_port);
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
 				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
+				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 
 				close(sd);
 				FD_CLR(sd, &master);
@@ -210,29 +238,6 @@ printf("PEER_PORT: %i\n", peer_port);
 			}			
 		}
 	}
-
-/*
-        //aggiungo il nuovo client alla lista
-        peer_addr[num_peer] = peer_addr;
-        num_peer++;
-        
-        //richiedo l'ora corrente
-        time(&rawtime);
-        
-        //inserisco l'ora nel buffer come stringa (sprintf aggiunge \0)
-        sprintf(buffer, "%s", ctime(&rawtime));
-        len = strlen(buffer) + 1;
-        
-        //notifico i peer registrati
-        for (i = 0; i < num_peer; i++) {
-            do {
-                ret = sendto(sd, buffer, len, 0,
-                         (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
-                if (ret < 0)
-                    sleep(POLLING_TIME);
-            } while (ret < 0);
-        }
-    }*/
 
 	close(sd);
 	FD_CLR(sd, &master);

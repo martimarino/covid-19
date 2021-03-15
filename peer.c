@@ -92,7 +92,6 @@ int main(int argc, char* argv[]){
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(peer_port, tmp_port);		
-		printf("NUMERO DI PORTA: %s\n", peer_port);
 	}
 
 /*
@@ -116,97 +115,97 @@ int main(int argc, char* argv[]){
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
 
-			if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
-				printf("Aspetto di ricevere...\n");
-				//riceve comandi dal server
+		if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
+			printf("Aspetto di ricevere...\n");
+			//riceve comandi dal server
+			do {
+				/* Tento di ricevere i dati dal server  */
+				ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
+								(struct sockaddr*)&srv_addr, &len);
+
+				/* Se non ricevo niente vado a dormire per un poco */
+				if (ret < 0)
+					sleep(POLLING_TIME);
+
+			} while(ret < 0);
+			printf("Ricevuto: %s\n", buffer);
+			
+		}
+
+		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
+			
+			scanf("%[^\n]%*c", buffer);
+			
+			token = strtok(buffer, " ");
+		
+			for(i = 0; token != NULL; i++) {
+				
+				switch(i) {
+					case 0:
+						sscanf(token, "%s", &command);
+						break;
+					case 1:
+						sscanf(token, "%s", &first_arg);
+						break;
+					case 2:
+						sscanf(token, "%s", &second_arg);
+						break;
+					case 3:
+						sscanf(token, "%s", &third_arg);
+						break;
+					default:
+						printf("Comando non riconosciuto\n");
+				
+				}
+				token = strtok(NULL, " ");
+			}
+
+			if(strcmp(command, "start") == 0){
+//printf("START COMMAND\n");
+				printf("Richiesta connessione al DS...\n");
+//printf("PEER_CONNECTED: %i\n", peer_connected);
+				peer_connect();
+//printf("FDMAX: %i\n", fdmax);
+//printf("PEER_CONNECTED: %i\n", peer_connected);
 				do {
-					/* Tento di ricevere i dati dal server  */
-					ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
-									(struct sockaddr*)&srv_addr, &len);
+					//copio la struct nel buffer da inviare
+					sprintf(buffer, "BOOT %s %s", localhost, peer_port);
 
-					/* Se non ricevo niente vado a dormire per un poco */
+					printf("Boot message inviato: %s\n", buffer);
+					// Tento di inviare le informazioni di boot continuamente        
+					ret = sendto(sd, buffer, sizeof(buffer), 0,
+									(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+					// Se la richiesta non e' stata inviata vado a dormire per un poco
 					if (ret < 0)
-						sleep(POLLING_TIME);
+								sleep(POLLING_TIME);
+				} while (ret < 0);
+			
+				printf("INFO BOOT INVIATE\n");
+				printf("Attesa risposta dal DS...\n");
 
-				} while(ret < 0);
-				printf("Ricevuto: %s\n", buffer);
+			}
+/*
+			if(strcmp(command, "add") == 0) {	
 				
 			}
 
-			if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
-				
-				scanf("%[^\n]%*c", buffer);
-				
-				token = strtok(buffer, " ");
-			
-				for(i = 0; token != NULL; i++) {
-					
-					switch(i) {
-						case 0:
-							sscanf(token, "%s", &command);
-							break;
-						case 1:
-							sscanf(token, "%s", &first_arg);
-							break;
-						case 2:
-							sscanf(token, "%s", &second_arg);
-							break;
-						case 3:
-							sscanf(token, "%s", &third_arg);
-							break;
-						default:
-							printf("Comando non riconosciuto\n");
-					
-					}
-					token = strtok(NULL, " ");
-				}
+			if(strcmp(command, "get") == 0) {	
 
-				if(strcmp(command, "start") == 0){
-					printf("START COMMAND\n");
-					printf("Richiesta connessione al DS...\n");
-					printf("PEER_CONNECTED: %i\n", peer_connected);
-					peer_connect();
-					printf("FDMAX: %i\n", fdmax);
-					printf("PEER_CONNECTED: %i\n", peer_connected);
-					do {
-						//copio la struct nel buffer da inviare
-						sprintf(buffer, "BOOT,%s,%s", localhost, peer_port);
-
-						printf("Boot message inviato: %s\n", buffer);
-						// Tento di inviare le informazioni di boot continuamente        
-						ret = sendto(sd, buffer, sizeof(buffer), 0,
-								       (struct sockaddr*)&srv_addr, sizeof(srv_addr));
-						// Se la richiesta non e' stata inviata vado a dormire per un poco
-						if (ret < 0)
-									sleep(POLLING_TIME);
-					} while (ret < 0);
-				
-					printf("INFO BOOT INVIATE\n");
-					printf("Attesa risposta dal DS...\n");
-
-				}
-/*
-				if(strcmp(command, "add") == 0) {	
-					
-				}
-
-				if(strcmp(command, "get") == 0) {	
-
-				}
+			}
 */	
-				if(strcmp(command, "stop") == 0) {	
-					printf("Terminazione forzata\n");
-					free(tmp_port);
-					free(token);
-					if(peer_connected == 1) {
-						close(sd);
-						peer_connected = 0;
-						printf("Chiusura del socket effettuata\n");
-					}
-					
-					exit(0);
+			if(strcmp(command, "stop") == 0) {	
+				printf("Terminazione forzata\n");
+				free(tmp_port);
+				free(token);
+				if(peer_connected == 1) {
+					close(sd);
+					peer_connected = 0;
+					printf("Chiusura del socket effettuata\n");
 				}
-			}	
+				
+				exit(0);
+			}
+		}	
 	} //while
 
 	free(tmp_port);
