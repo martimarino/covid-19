@@ -21,9 +21,9 @@ char peer_port[PORT_LEN];
 char* tmp_port;
 int peer_connected = 0;
 char command[CMD_LEN+1];
-char first_arg[7];
-char second_arg[8];
-char third_arg[6];
+char first_arg[BUFFER_LEN];
+char second_arg[BUFFER_LEN];
+char third_arg[BUFFER_LEN];
 
 struct sockaddr_in srv_addr, my_addr;
 char buffer[BUFFER_LEN];
@@ -35,13 +35,13 @@ struct Request req;
 
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
-int fdmax;
+int fdmax = 0;
 
 char *token;
 
 void peer_connect() {
     /* Creazione socket */
-    sd = socket(AF_INET,SOCK_DGRAM,0);
+    sd = socket(AF_INET, SOCK_DGRAM, 0);
 
     /* Creazione indirizzo di bind */
     memset (&my_addr, 0, sizeof(my_addr));     // Pulizia 
@@ -61,7 +61,9 @@ void peer_connect() {
     srv_addr.sin_port = htons(4242);
     inet_pton(AF_INET, localhost, &srv_addr.sin_addr);
 
+	fdmax = sd;
 	peer_connected = 1;
+	printf("Connessione con il DS effettuata\n");
 }
 
 int main(int argc, char* argv[]){
@@ -93,35 +95,51 @@ int main(int argc, char* argv[]){
 		printf("NUMERO DI PORTA: %s\n", peer_port);
 	}
 
-
+/*
 	//reset dei descrittori
 	FD_ZERO(&master);			//svuota master
 	FD_ZERO(&read_fds);			//svuota read_fds
 
 	FD_SET(0, &master);			//aggiunge stdin a master
-	FD_SET(sd, &master);		//aggiunge sd a master
-
-	fdmax = sd;
+	FD_SET(sd, &master);		//aggiunge sd a master*/
 	
 	while(1) {
+
+		//reset dei descrittori
+		FD_ZERO(&master);			//svuota master
+		FD_ZERO(&read_fds);			//svuota read_fds
+
+		FD_SET(0, &master);			//aggiunge stdin a master
+		FD_SET(sd, &master);		//aggiunge sd a master
 
 		read_fds = master;  
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
 
 			if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
-
+				printf("Aspetto di ricevere...\n");
 				//riceve comandi dal server
+				do {
+					/* Tento di ricevere i dati dal server  */
+					ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
+									(struct sockaddr*)&srv_addr, &len);
+
+					/* Se non ricevo niente vado a dormire per un poco */
+					if (ret < 0)
+						sleep(POLLING_TIME);
+
+				} while(ret < 0);
+				printf("Ricevuto: %s\n", buffer);
 				
 			}
 
 			if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
-			
-				scanf("%[^\n]", &buffer);
+				
+				scanf("%[^\n]%*c", buffer);
+				
 				token = strtok(buffer, " ");
-
+			
 				for(i = 0; token != NULL; i++) {
-					printf(" %s\n", token);
 					
 					switch(i) {
 						case 0:
@@ -138,22 +156,23 @@ int main(int argc, char* argv[]){
 							break;
 						default:
 							printf("Comando non riconosciuto\n");
-					}
 					
+					}
 					token = strtok(NULL, " ");
 				}
 
-
 				if(strcmp(command, "start") == 0){
-
+					printf("START COMMAND\n");
+					printf("Richiesta connessione al DS...\n");
+					printf("PEER_CONNECTED: %i\n", peer_connected);
 					peer_connect();
-
+					printf("FDMAX: %i\n", fdmax);
+					printf("PEER_CONNECTED: %i\n", peer_connected);
 					do {
-
 						//copio la struct nel buffer da inviare
 						sprintf(buffer, "BOOT,%s,%s", localhost, peer_port);
 
-						printf("Boot message: %s\n", buffer);
+						printf("Boot message inviato: %s\n", buffer);
 						// Tento di inviare le informazioni di boot continuamente        
 						ret = sendto(sd, buffer, sizeof(buffer), 0,
 								       (struct sockaddr*)&srv_addr, sizeof(srv_addr));
@@ -162,25 +181,29 @@ int main(int argc, char* argv[]){
 									sleep(POLLING_TIME);
 					} while (ret < 0);
 				
-					printf("Info boot inviate\n");
+					printf("INFO BOOT INVIATE\n");
+					printf("Attesa risposta dal DS...\n");
 
-					do {
-						/* Tento di ricevere i dati dal server  */
-						ret = recvfrom(sd, buffer, RES_LEN, 0, 
-								        (struct sockaddr*)&srv_addr, &len);
-
-						/* Se non ricevo niente vado a dormire per un poco */
-						if (ret < 0)
-							sleep(POLLING_TIME);
-
-					} while(ret < 0);
 				}
-				
-				if(strcmp(command, "stop") == 0) {	//va fatta la strtok
+/*
+				if(strcmp(command, "add") == 0) {	
+					
+				}
+
+				if(strcmp(command, "get") == 0) {	
+
+				}
+*/	
+				if(strcmp(command, "stop") == 0) {	
 					printf("Terminazione forzata\n");
 					free(tmp_port);
 					free(token);
-					close(sd);
+					if(peer_connected == 1) {
+						close(sd);
+						peer_connected = 0;
+						printf("Chiusura del socket effettuata\n");
+					}
+					
 					exit(0);
 				}
 			}	
@@ -190,6 +213,7 @@ int main(int argc, char* argv[]){
 	free(token);
     printf("%s\n", buffer);
 
+	//peer_connected = 0;
     close(sd);
 
 } //main

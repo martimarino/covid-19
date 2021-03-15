@@ -14,14 +14,16 @@
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 
 int num_peer = 0;   //numero peer registrati
-int i;
+int i, j, k;
 int ret, sd, len, addrlen, newfd;
 char command[CMD_LEN+1];
 char peer_ip[ADDR_LEN+1];
-int peer_port;
+char peer_port[PORT_LEN+1];
 char ds_port[PORT_LEN];
 char* tmp_port;
 
+char* token;
+char first_arg[BUFFER_LEN];
 
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
@@ -54,15 +56,25 @@ void ds_connect() {
         perror("Bind non riuscita\n");
         exit(0);
     }
+	addrlen = sizeof(peer_addr);
+
+	fdmax = sd;
+	printf("Connessione effettuata\n");
+	printf("FDMAX: %i\n", fdmax);
+	printf("SD: %i\n", sd);
+
 }
 
 int main(int argc, char* argv[]) {
-   
-
-	ds_connect();
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
-	if(ds_port == NULL) {
+	if(tmp_port == NULL) {
+		printf("Memory not allocated\n");
+		exit(0);
+	}
+
+	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
+	if(token == NULL) {
 		printf("Memory not allocated\n");
 		exit(0);
 	}
@@ -79,64 +91,90 @@ int main(int argc, char* argv[]) {
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(ds_port, tmp_port);		
-		printf("NUMERO DI PORTA: %s\n", ds_port);
+		//printf("NUMERO DI PORTA: %s\n", ds_port);
 	}
-
-    
+    /*
 	//reset dei descrittori
 	FD_ZERO(&master);			//svuota master
 	FD_ZERO(&read_fds);			//svuota read_fds
 
 	FD_SET(0, &master);			//aggiunge stdin a master
-	FD_SET(sd, &master);		//aggiunge sd a master
+	FD_SET(sd, &master);		//aggiunge sd a master*/
 
-	fdmax = sd;
-	
-        
     printf("******************* DS COVID STARTED *******************\n");
-    printf("Digita un comando:\n");    
-    
+	ds_connect();
+	printf("Digita un comando:\n");  
+
     while(1) {
+
+		FD_ZERO(&master);			//svuota master
+		FD_ZERO(&read_fds);			//svuota read_fds
+
+		FD_SET(0, &master);			//aggiunge stdin a master
+		FD_SET(sd, &master);		//aggiunge sd a master
 
 		read_fds = master;  
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
-	
+printf("SD: %i\n", sd);
 		if (FD_ISSET(sd, &read_fds)) {  //sd pronto in lettura
-	
-			addrlen = sizeof(peer_addr);
-			ret = recvfrom(sd, buffer, CMD_LEN, 0,
-		            (struct sockaddr*)&peer_addr, &addrlen);
-			if(ret < 0) {
-				perror("Errore richiesta dal peer\n");
-				exit(1);
-			}
-			printf("Comando ricevuto: %s\n", buffer);
-		
-			sscanf(buffer, "%s,%s,%d", &command, &peer_ip, &peer_port);
-	
+
+			printf("Sto per ricevere...\n");
+
+			do {
+				ret = recvfrom(sd, buffer, BUFFER_LEN, 0,
+						(struct sockaddr*)&peer_addr, &addrlen);
+				if(ret < 0) {
+					perror("Errore richiesta dal peer\n");
+					exit(1);
+				}
+				printf("Comando ricevuto: %s\n", buffer);
+			} while (ret < 0);
+
+			
+			sscanf(buffer, "%s,%s,%s", &command, &peer_ip, &peer_port);
+printf("COMMAND: %s\n", command);
+printf("PEER_IP: %s\n", peer_ip);
+printf("PEER_PORT: %i\n", peer_port);
 			if(strcmp(command, "BOOT") == 0) {
 
-				printf("Buffer ricevuto: %s\n", buffer);
+				printf("Ricevuta richiesta di boot: %s\n", buffer);
 
-				printf("Ho ricevuto la struct: %s\n", command, peer_ip, peer_port);
+				printf("Ho ricevuto la struct: %s, %s, %s\n", command, peer_ip, peer_port);
 				time(&rawtime);
 				sprintf(buffer, "%s", ctime(&rawtime));
 				len = strlen(buffer) + 1;
+
 				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
+				     (struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
 				if (ret < 0)
 					perror("Errore invio risposta al peer\n");
-			}
+			} 
 
 		}
+
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
+			scanf("%[^\n]%*c", buffer);
+		printf("DA TASTIERA: %s\n", buffer);
+			token = strtok(buffer, " ");
 
-			scanf("%s", &command);
-			//printf("%s", cmd);
-			//printf("Comando ricevuto: %s\n", cmd);
+			for(i = 0; token != NULL; i++) {
 
-			if(strcmp(command, "help") == 0) {
+				switch(i) {
+					case 0:
+						sscanf(token, "%s", &command);
+						break;
+					case 1:
+						sscanf(token, "%s", &first_arg);
+						break;
+					default:
+						printf("Comando non riconosciuto\n");
+				}
+				
+				token = strtok(NULL, " ");
+			} 
+
+			if(strcmp(command, "help") == 0) {  printf("DENTRO HELP\n");
 				printf("\nDettaglio comandi:\n");
 				printf("1) help 		--> mostra i dettagli dei comandi\n");
 				printf("2) showpeers 		--> mostra un elenco dei peer connessi\n");
@@ -157,7 +195,7 @@ int main(int argc, char* argv[]) {
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
 				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
+				     (struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
 
 				close(sd);
 				FD_CLR(sd, &master);
@@ -166,6 +204,7 @@ int main(int argc, char* argv[]) {
 				FD_CLR(0, &master);
 
 				free(tmp_port);
+				free(token);
 
 				exit(0);
 			}			
@@ -173,38 +212,6 @@ int main(int argc, char* argv[]) {
 	}
 
 /*
-        //aspetto richieste di connessione
-        do {
-            ret = recvfrom(sd, buffer, REQ_LEN, 0,
-                            (struct sockaddr*)&peer_addr, &addrlen);
-            if(ret < 0)
-                sleep(POLLING_TIME);
-
-			scanf("%s", &cmd);
-			if(strcmp(cmd, "help")) {
-				printf("help - ricevuto\n");
-			}
-		
-			if(strcmp(cmd, "showpeers")) {
-				printf("showpeers - ricevuto\n");
-			}
-		
-			if(strcmp(cmd, "esc")) {
-				printf("esc - ricevuto\n");
-			}
-			tok = strtok(cmd, " ");
-			if(strcmp(tok, "showneighbor"))	{
-				tok = strtok(cmd, NULL);
-				if(!tok) {
-					printf("mostra i neighbor di tutti i peer");
-				} else {
-					printf("mostra i neighbor del peer specificato");
-				}
-			}
-			printf("Comando non riconosciuto\n");
-
-        } while (ret < 0);
-        
         //aggiungo il nuovo client alla lista
         peer_addr[num_peer] = peer_addr;
         num_peer++;
@@ -234,6 +241,7 @@ int main(int argc, char* argv[]) {
 	FD_CLR(0, &master);
 
 	free(tmp_port);
+	free(token);
     
 }
 
