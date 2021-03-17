@@ -187,27 +187,44 @@ printf("PEER_PORT: %s\n", second_arg);
 					exit(-1);
 				}
 				//registrazione del nuovo peer
-				num_peer++;
-				peer_addr[num_peer] = connecting_addr;
+				
+				for(i = 0; i < MAX_PEER; i++) {
+					printf("PORT: %s\t PORT[i]: %s %s\n", second_arg, peer_registered[i].port);
+					if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
+						break;
+				}
+				printf("*** I = %i\n", i);
 
-				strcpy(peer_registered[num_peer].ip, first_arg);
-				strcpy(peer_registered[num_peer].port, second_arg);
-				peer_registered[num_peer].significant = 1;
+//se è uscito con significant == 0 aggiungo dopo altrimenti sposto tutto
+
+				peer_addr[i] = connecting_addr;
+
+				strcpy(peer_registered[i].ip, first_arg);
+				strcpy(peer_registered[i].port, second_arg);
+				peer_registered[i].significant = 1;
+
+				num_peer++;
 
 printf("NUM_PEER: %i\n", num_peer);
 
-				
-				
 				//invio le informazioni sui vicini
-				strcpy(left_ip, peer_registered[(num_peer-1)%MAX_PEER].ip);
-				strcpy(left_port, peer_registered[(num_peer-1)%MAX_PEER].port);
-				strcpy(right_ip, peer_registered[(num_peer+1)%MAX_PEER].ip);
-				strcpy(right_port, peer_registered[(num_peer+1)%MAX_PEER].port);
+				strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
+				strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
+				strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
+				strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
 				sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
-				
+	
+/*
+for(i = 0; i < MAX_PEER; i++) {
+	printf("IP: %s\n", peer_registered[i].ip);
+	printf("PORT: %s\n", peer_registered[i].port);
+	printf("SIGN: %i\n", peer_registered[i].significant);
+}
+*/
 				printf("Invio vicini: %s\n", buffer);
 
 				len = strlen(buffer)+1;
+
 				ret = sendto(sd, buffer, len, 0,
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
@@ -243,8 +260,14 @@ printf("NUM_PEER: %i\n", num_peer);
 
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
-				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+				for(i = 0; i < MAX_PEER; i++) {
+					if(peer_registered[i].significant == 1) {
+						ret = sendto(sd, buffer, len, 0,
+							     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
+						if(ret < 0)
+							sleep(POLLING_TIME);
+					}
+				}
 
 				closing_actions();
 
