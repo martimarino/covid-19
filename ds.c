@@ -14,16 +14,16 @@
 #define MAX_PEER        10
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 
-int num_peer = 0;   //numero peer registrati
 int i, j, k;
 int ret, sd, len, addrlen;
-char command[CMD_LEN+1];
-char peer_ip[ADDR_LEN+1];
-char peer_port[PORT_LEN+1];
+
+char peer_ip[ADDR_LEN];
+char peer_port[PORT_LEN];
 char ds_port[PORT_LEN];
 char* tmp_port;
 
 char* token;
+char command[CMD_LEN];
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
 
@@ -33,13 +33,29 @@ int fdmax;
 
 struct sockaddr_in my_addr, connecting_addr;    //struct per indirizzi
 struct sockaddr_in peer_registered[MAX_PEER];   //array indirizzi registrati
+int num_peer = 0;   //numero peer registrati
 
 char buffer[BUFFER_LEN];
 
 time_t rawtime;
 
+char DS_file[] = "DS_register.txt";
+
 //struct Boot peer_boot;
 //struct Peer peer;
+
+void closing_actions() {
+	
+	close(sd);
+	FD_CLR(sd, &master);
+	
+	close(0);
+	FD_CLR(0, &master);
+
+	free(tmp_port);
+	free(token);
+
+}
 
 void ds_connect() {
 
@@ -56,11 +72,11 @@ void ds_connect() {
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
     if (ret < 0) {
         perror("Bind non riuscita\n");
-        exit(0);
+        exit(-1);
     }
 
 	fdmax = sd;
-	printf("Connessione effettuata\n");
+	printf("Socket creato: DS in ascolto...\n");
 //	printf("FDMAX: %i\n", fdmax);
 //	printf("SD: %i\n", sd);
 
@@ -95,24 +111,24 @@ int main(int argc, char* argv[]) {
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
 	if(tmp_port == NULL) {
-		printf("Memory not allocated\n");
+		perror("Memory not allocated: \n");
 		exit(0);
 	}
 
 	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
 	if(token == NULL) {
-		printf("Memory not allocated\n");
-		exit(0);
+		perror("Memory not allocated: \n");
+		exit(-1);
 	}
 
 	// Estraggo il numero di porta
 	if(argc == 1) {
-		printf("Comando non riconosciuto: inserire numero di porta\n");
-		exit(1);
+		perror("Comando non riconosciuto: inserire numero di porta\n");
+		exit(-1);
 	}
 	if(argc > 2) {
 		printf("Comando non riconosciuto\n");
-		exit(1);
+		exit(-1);
 	}
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
@@ -145,17 +161,15 @@ FD_SET(sd, &master);		//aggiunge sd a master*/
 
 		if (FD_ISSET(sd, &read_fds)) {  //sd pronto in lettura
 
-			printf("Sto per ricevere...\n");
-
 			do {
 				addrlen = sizeof(connecting_addr);
 				ret = recvfrom(sd, buffer, BUFFER_LEN, 0,
 						(struct sockaddr*)&connecting_addr, &addrlen);
 				if(ret < 0) {
 					perror("Errore richiesta dal peer\n");
-					exit(1);
+					exit(-1);
 				}
-				printf("Comando ricevuto: %s\n", buffer);
+				printf("Messaggio ricevuto: %s\n", buffer);
 			} while (ret < 0);
 
 			parse_string(buffer);
@@ -166,15 +180,23 @@ printf("PEER_PORT: %s\n", second_arg);
 */
 			if(strcmp(command, "BOOT") == 0) {
 
+				if(num_peer == MAX_PEER) {
+					perror("Errore: raggiunto il numero massimo di peer\n");
+					closing_actions();
+					exit(-1);
+				}
+				//registrazione del nuovo peer
 				num_peer++;
-				peer_registered[num_peer] = connecting_addr;
+				peer_registered[num_peer] = connecting_addr;	
+printf("NUM_PEER: %i\n", num_peer);
 
-				printf("Ricevuta richiesta di boot: %s\n", buffer);
+				printf("Invio vicini: %s\n", buffer);
 
 				time(&rawtime);
 				
 				sprintf(buffer, "%s", ctime(&rawtime));
-				ret = sendto(sd, buffer, BUFFER_LEN, 0,
+				len = strlen(buffer)+1;
+				ret = sendto(sd, buffer, len, 0,
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
 					perror("Errore invio risposta al peer\n");
@@ -212,28 +234,14 @@ printf("PEER_PORT: %s\n", second_arg);
 				ret = sendto(sd, buffer, len, 0,
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 
-				close(sd);
-				FD_CLR(sd, &master);
-				
-				close(0);
-				FD_CLR(0, &master);
-
-				free(tmp_port);
-				free(token);
+				closing_actions();
 
 				exit(0);
 			}			
 		}
 	}
 
-	close(sd);
-	FD_CLR(sd, &master);
-	
-	close(0);
-	FD_CLR(0, &master);
-
-	free(tmp_port);
-	free(token);
+	closing_actions();
     
 }
 

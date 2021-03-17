@@ -70,9 +70,9 @@ void peer_connect(char DS_addr[], char DS_port[]) {
     /* Aggancio */
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
     if (ret < 0){
-        perror("Bind non riuscita\n");
+        perror("Bind non riuscita: \n");
 		closing_actions();
-        exit(0);
+        exit(-1);
     }
     /* Creazione indirizzo del server */
     memset (&srv_addr, 0, sizeof(srv_addr)); 
@@ -127,24 +127,24 @@ int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
 	if(tmp_port == NULL) {
-		printf("Memory not allocated\n");
-		exit(0);
+		perror("Memory not allocated: \n");
+		exit(-1);
 	}
 
 	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
 	if(token == NULL) {
-		printf("Memory not allocated\n");
-		exit(0);
+		perror("Memory not allocated: \n");
+		exit(-1);
 	}
 
 	// Estraggo il numero di porta
 	if(argc == 1) {
-		printf("Comando non riconosciuto: inserire numero di porta\n");
-		exit(1);
+		perror("Comando non riconosciuto: inserire numero di porta\n");
+		exit(-1);
 	}
 	if(argc > 2) {
-		printf("Comando non riconosciuto\n");
-		exit(1);
+		perror("Comando non riconosciuto\n");
+		exit(-1);
 	}
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]){
 		// select ritorna quando un descrittore è pronto
 
 		if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
-			printf("Aspetto di ricevere...\n");
+	
 			//riceve comandi dal server
 			do {
 				/* Tento di ricevere i dati dal server  */
@@ -189,26 +189,24 @@ int main(int argc, char* argv[]){
 			parse_string(buffer);
 
 			if((strcmp(command, "start") == 0) && (valid_input == 1)){
-//printf("START COMMAND\n");
+
 				printf("Richiesta connessione al DS...\n");
-//printf("PEER_CONNECTED: %i\n", peer_connected);
 				peer_connect(first_arg, second_arg);
-//printf("FDMAX: %i\n", fdmax);
-//printf("PEER_CONNECTED: %i\n", peer_connected);
+
 				do {
 					//copio la struct nel buffer da inviare
 					sprintf(buffer, "BOOT %s %s", localhost, peer_port);
-
+					len = strlen(buffer)+1;
 					printf("Boot message inviato: %s\n", buffer);
 					// Tento di inviare le informazioni di boot continuamente        
-					ret = sendto(sd, buffer, sizeof(buffer), 0,
+					ret = sendto(sd, buffer, len, 0,
 									(struct sockaddr*)&srv_addr, sizeof(srv_addr));
 					// Se la richiesta non e' stata inviata vado a dormire per un poco
 					if (ret < 0)
 								sleep(POLLING_TIME);
 				} while (ret < 0);
 			
-				printf("INFO BOOT INVIATE\n");
+//printf("INFO BOOT INVIATE\n");
 
 				printf("Recupero informazioni da file\n");
 
@@ -217,7 +215,6 @@ int main(int argc, char* argv[]){
 				strcat(filepath, "/");
 				strcat(filepath, filename);
 				
-				printf("FILEPATH: %s\n", filepath);
 				fd = fopen(filepath, "r+");
 				if(fd == NULL) {	//se non esiste lo creo
 					fd = fopen(filepath, "w");
@@ -228,7 +225,7 @@ int main(int argc, char* argv[]){
 						fd = fopen(filepath, "r+");
 					}
 				}
-				printf("Attesa risposta dal DS...\n");
+				printf("Attendo risposta dal DS...\n");
 
 			}
 /*
