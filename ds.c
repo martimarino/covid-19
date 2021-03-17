@@ -178,7 +178,7 @@ printf("PEER_PORT: %s\n", second_arg);
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
 					perror("Errore invio risposta al peer\n");
-				printf("FINE SEND TO\n");
+				//printf("FINE SEND TO\n");
 			} 
 
 		}

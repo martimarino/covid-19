@@ -39,6 +39,23 @@ fd_set read_fds;	//set dei descrittori in lettura
 int fdmax = 0;
 
 char *token;
+int valid_input = 1;
+
+FILE* fd;
+char filepath[BUFFER_LEN];
+char filename[] = "register.txt";
+
+void closing_actions() {
+	free(tmp_port);
+	free(token);
+
+	if(peer_connected == 1) {
+		close(sd);
+		printf("Chiusura del socket effettuata\n");
+	}
+	FD_CLR(0, &master);
+	FD_CLR(sd, &master);
+}
 
 void peer_connect(char DS_addr[], char DS_port[]) {
     /* Creazione socket */
@@ -54,6 +71,7 @@ void peer_connect(char DS_addr[], char DS_port[]) {
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
     if (ret < 0){
         perror("Bind non riuscita\n");
+		closing_actions();
         exit(0);
     }
     /* Creazione indirizzo del server */
@@ -65,6 +83,44 @@ void peer_connect(char DS_addr[], char DS_port[]) {
 	fdmax = sd;
 	peer_connected = 1;
 	printf("Connessione con il DS effettuata\n");
+}
+
+void parse_string(char buffer[]) {
+
+	token = strtok(buffer, " ");
+
+	for(i = 0; token != NULL; i++) {
+		
+		switch(i) {
+			case 0:
+				sscanf(token, "%s", &command);
+				break;
+			case 1:
+				sscanf(token, "%s", &first_arg);
+				break;
+			case 2:
+				sscanf(token, "%s", &second_arg);
+				break;
+			case 3:
+				sscanf(token, "%s", &third_arg);
+				break;
+			default:
+				printf("Comando non riconosciuto\n");
+				break;
+		
+		}
+		token = strtok(NULL, " ");
+	}
+
+	if(((strcmp(command, "start") == 0) && (i != 3)) ||
+		((strcmp(command, "add") == 0) && (i != 2)) ||
+		((strcmp(command, "get") == 0) && (i != 4)) ||
+		((strcmp(command, "stop") == 0) && (i != 1))) {
+		printf("Comando non riconosciuto\n");
+		valid_input = 0;
+	} else {
+		valid_input = 1;
+	}
 }
 
 int main(int argc, char* argv[]){
@@ -94,14 +150,6 @@ int main(int argc, char* argv[]){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(peer_port, tmp_port);		
 	}
-
-/*
-	//reset dei descrittori
-	FD_ZERO(&master);			//svuota master
-	FD_ZERO(&read_fds);			//svuota read_fds
-
-	FD_SET(0, &master);			//aggiunge stdin a master
-	FD_SET(sd, &master);		//aggiunge sd a master*/
 	
 	while(1) {
 
@@ -138,32 +186,9 @@ int main(int argc, char* argv[]){
 			scanf("%[^\n]", buffer);
 			scanf("%*c");
 			
-			token = strtok(buffer, " ");
-		
-			for(i = 0; token != NULL; i++) {
-				
-				switch(i) {
-					case 0:
-						sscanf(token, "%s", &command);
-						break;
-					case 1:
-						sscanf(token, "%s", &first_arg);
-						break;
-					case 2:
-						sscanf(token, "%s", &second_arg);
-						break;
-					case 3:
-						sscanf(token, "%s", &third_arg);
-						break;
-					default:
-						printf("Comando non riconosciuto\n");
-						break;
-				
-				}
-				token = strtok(NULL, " ");
-			}
+			parse_string(buffer);
 
-			if(strcmp(command, "start") == 0){
+			if((strcmp(command, "start") == 0) && (valid_input == 1)){
 //printf("START COMMAND\n");
 				printf("Richiesta connessione al DS...\n");
 //printf("PEER_CONNECTED: %i\n", peer_connected);
@@ -184,6 +209,25 @@ int main(int argc, char* argv[]){
 				} while (ret < 0);
 			
 				printf("INFO BOOT INVIATE\n");
+
+				printf("Recupero informazioni da file\n");
+
+				strcpy(filepath, "./");
+				strcat(filepath, peer_port);
+				strcat(filepath, "/");
+				strcat(filepath, filename);
+				
+				printf("FILEPATH: %s\n", filepath);
+				fd = fopen(filepath, "r+");
+				if(fd == NULL) {	//se non esiste lo creo
+					fd = fopen(filepath, "w");
+					if(fd == NULL)
+						perror("Error: ");
+					else {
+						fclose(fd);		//lo riapro in r/w
+						fd = fopen(filepath, "r+");
+					}
+				}
 				printf("Attesa risposta dal DS...\n");
 
 			}
@@ -198,25 +242,14 @@ int main(int argc, char* argv[]){
 */	
 			if(strcmp(command, "stop") == 0) {	
 				printf("Terminazione forzata\n");
-				free(tmp_port);
-				free(token);
-				if(peer_connected == 1) {
-					close(sd);
-					peer_connected = 0;
-					printf("Chiusura del socket effettuata\n");
-				}
-				
+				closing_actions();
 				exit(0);
 			}
 		}	
 	} //while
 
-	free(tmp_port);
-	free(token);
+	closing_actions();
     printf("%s\n", buffer);
-
-	//peer_connected = 0;
-    close(sd);
 
 } //main
 
