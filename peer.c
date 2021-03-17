@@ -178,6 +178,14 @@ int main(int argc, char* argv[]){
 
 			} while(ret < 0);
 			printf("Ricevuto: %s\n", buffer);
+
+			parse_string(buffer);
+
+			if(strcmp(command, "ESC") == 0) {
+				printf("Chiusura a causa dell terminazione del DS\n");
+				closing_actions();
+				exit(0);
+			}
 			
 		}
 

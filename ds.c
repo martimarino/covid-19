@@ -32,7 +32,7 @@ fd_set read_fds;	//set dei descrittori in lettura
 int fdmax;
 
 struct sockaddr_in my_addr, connecting_addr;    //struct per indirizzi
-struct sockaddr_in peer_registered[MAX_PEER];   //array indirizzi registrati
+struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
 int num_peer = 0;   //numero peer registrati
 
 char buffer[BUFFER_LEN];
@@ -41,8 +41,11 @@ time_t rawtime;
 
 char DS_file[] = "DS_register.txt";
 
-//struct Boot peer_boot;
-//struct Peer peer;
+struct Peer peer_registered[MAX_PEER];
+char left_ip[ADDR_LEN];
+char left_port[PORT_LEN];
+char right_ip[ADDR_LEN];
+char right_port[PORT_LEN];
 
 void closing_actions() {
 	
@@ -135,13 +138,10 @@ int main(int argc, char* argv[]) {
 		strcpy(ds_port, tmp_port);		
 //printf("NUMERO DI PORTA: %s\n", ds_port);
 	}
-/*
-//reset dei descrittori
-FD_ZERO(&master);			//svuota master
-FD_ZERO(&read_fds);			//svuota read_fds
 
-FD_SET(0, &master);			//aggiunge stdin a master
-FD_SET(sd, &master);		//aggiunge sd a master*/
+	//inizializzo l'array di struct
+	for(i = 0; i < MAX_PEER; i++)
+		peer_registered[i].significant = 0;
 
     printf("******************* DS COVID STARTED *******************\n");
 	ds_connect();
@@ -179,7 +179,8 @@ printf("PEER_IP: %s\n", first_arg);
 printf("PEER_PORT: %s\n", second_arg);
 */
 			if(strcmp(command, "BOOT") == 0) {
-
+				
+				//controllo sul numero di peer registrati
 				if(num_peer == MAX_PEER) {
 					perror("Errore: raggiunto il numero massimo di peer\n");
 					closing_actions();
@@ -187,20 +188,31 @@ printf("PEER_PORT: %s\n", second_arg);
 				}
 				//registrazione del nuovo peer
 				num_peer++;
-				peer_registered[num_peer] = connecting_addr;	
+				peer_addr[num_peer] = connecting_addr;
+
+				strcpy(peer_registered[num_peer].ip, first_arg);
+				strcpy(peer_registered[num_peer].port, second_arg);
+				peer_registered[num_peer].significant = 1;
+
 printf("NUM_PEER: %i\n", num_peer);
 
+				
+				
+				//invio le informazioni sui vicini
+				strcpy(left_ip, peer_registered[(num_peer-1)%MAX_PEER].ip);
+				strcpy(left_port, peer_registered[(num_peer-1)%MAX_PEER].port);
+				strcpy(right_ip, peer_registered[(num_peer+1)%MAX_PEER].ip);
+				strcpy(right_port, peer_registered[(num_peer+1)%MAX_PEER].port);
+				sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+				
 				printf("Invio vicini: %s\n", buffer);
 
-				time(&rawtime);
-				
-				sprintf(buffer, "%s", ctime(&rawtime));
 				len = strlen(buffer)+1;
 				ret = sendto(sd, buffer, len, 0,
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
 					perror("Errore invio risposta al peer\n");
-				//printf("FINE SEND TO\n");
+//printf("FINE SEND TO\n");
 			} 
 
 		}
