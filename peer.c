@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <time.h>
 #include <poll.h>
 #include <errno.h>
 #include "shared.h"
@@ -31,7 +32,7 @@ char buffer[BUFFER_LEN];
 // informazioni da inviare al server
 char info[BUFFER_LEN];
 
-struct Request req;
+//struct Request req;
 
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
@@ -39,7 +40,7 @@ int fdmax = 0;
 
 char *token;
 
-void peer_connect() {
+void peer_connect(char DS_addr[], char DS_port[]) {
     /* Creazione socket */
     sd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -58,8 +59,8 @@ void peer_connect() {
     /* Creazione indirizzo del server */
     memset (&srv_addr, 0, sizeof(srv_addr)); 
     srv_addr.sin_family = AF_INET;
-    srv_addr.sin_port = htons(4242);
-    inet_pton(AF_INET, localhost, &srv_addr.sin_addr);
+    srv_addr.sin_port = htons(atoi(DS_port));
+    inet_pton(AF_INET, DS_addr, &srv_addr.sin_addr);
 
 	fdmax = sd;
 	peer_connected = 1;
@@ -134,7 +135,8 @@ int main(int argc, char* argv[]){
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
 			
-			scanf("%[^\n]%*c", buffer);
+			scanf("%[^\n]", buffer);
+			scanf("%*c");
 			
 			token = strtok(buffer, " ");
 		
@@ -155,6 +157,7 @@ int main(int argc, char* argv[]){
 						break;
 					default:
 						printf("Comando non riconosciuto\n");
+						break;
 				
 				}
 				token = strtok(NULL, " ");
@@ -164,7 +167,7 @@ int main(int argc, char* argv[]){
 //printf("START COMMAND\n");
 				printf("Richiesta connessione al DS...\n");
 //printf("PEER_CONNECTED: %i\n", peer_connected);
-				peer_connect();
+				peer_connect(first_arg, second_arg);
 //printf("FDMAX: %i\n", fdmax);
 //printf("PEER_CONNECTED: %i\n", peer_connected);
 				do {

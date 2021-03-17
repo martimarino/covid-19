@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <time.h>
 #include "shared.h"
 
 #define MAX_PEER        10
@@ -38,13 +39,13 @@ char buffer[BUFFER_LEN];
 time_t rawtime;
 
 //struct Boot peer_boot;
-struct Request peer_req;
+//struct Peer peer;
 
 void ds_connect() {
-	
+
 	//creazione socket UPD non bloccante
     sd = socket(AF_INET, SOCK_DGRAM, 0);
-    
+
     //creazione indirizzo di bind
     memset(&my_addr, 0, sizeof(my_addr));
     my_addr.sin_family = AF_INET;
@@ -83,6 +84,7 @@ void parse_string(char buffer[]) {
 				break;
 			default:
 				printf("Comando non riconosciuto\n");
+				break;
 		}
 		
 		token = strtok(NULL, " ");
@@ -115,15 +117,15 @@ int main(int argc, char* argv[]) {
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(ds_port, tmp_port);		
-		//printf("NUMERO DI PORTA: %s\n", ds_port);
+//printf("NUMERO DI PORTA: %s\n", ds_port);
 	}
-    /*
-	//reset dei descrittori
-	FD_ZERO(&master);			//svuota master
-	FD_ZERO(&read_fds);			//svuota read_fds
+/*
+//reset dei descrittori
+FD_ZERO(&master);			//svuota master
+FD_ZERO(&read_fds);			//svuota read_fds
 
-	FD_SET(0, &master);			//aggiunge stdin a master
-	FD_SET(sd, &master);		//aggiunge sd a master*/
+FD_SET(0, &master);			//aggiunge stdin a master
+FD_SET(sd, &master);		//aggiunge sd a master*/
 
     printf("******************* DS COVID STARTED *******************\n");
 	ds_connect();
@@ -170,8 +172,8 @@ printf("PEER_PORT: %s\n", second_arg);
 				printf("Ricevuta richiesta di boot: %s\n", buffer);
 
 				time(&rawtime);
+				
 				sprintf(buffer, "%s", ctime(&rawtime));
-
 				ret = sendto(sd, buffer, BUFFER_LEN, 0,
 				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 				if (ret < 0)
@@ -182,25 +184,10 @@ printf("PEER_PORT: %s\n", second_arg);
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
-			scanf("%[^\n]%*c", buffer);
+			scanf("%[^\n]", buffer);
+			scanf("%*c");
 		
-			token = strtok(buffer, " ");
-
-			for(i = 0; token != NULL; i++) {
-
-				switch(i) {
-					case 0:
-						sscanf(token, "%s", &command);
-						break;
-					case 1:
-						sscanf(token, "%s", &first_arg);
-						break;
-					default:
-						printf("Comando non riconosciuto\n");
-				}
-				
-				token = strtok(NULL, " ");
-			} 
+			parse_string(buffer);
 
 			if(strcmp(command, "help") == 0) {  printf("DENTRO HELP\n");
 				printf("\nDettaglio comandi:\n");
