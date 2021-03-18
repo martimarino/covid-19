@@ -173,11 +173,7 @@ int main(int argc, char* argv[]) {
 			} while (ret < 0);
 
 			parse_string(buffer);
-/*
-printf("COMMAND: %s\n", command);
-printf("PEER_IP: %s\n", first_arg);
-printf("PEER_PORT: %s\n", second_arg);
-*/
+
 			if(strcmp(command, "BOOT") == 0) {
 				
 				//controllo sul numero di peer registrati
@@ -187,16 +183,24 @@ printf("PEER_PORT: %s\n", second_arg);
 					exit(-1);
 				}
 				//registrazione del nuovo peer
-				
 				for(i = 0; i < MAX_PEER; i++) {
-					printf("PORT: %s\t PORT[i]: %s %s\n", second_arg, peer_registered[i].port);
 					if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
 						break;
-				}
-				printf("*** I = %i\n", i);
+				}  		//i è l'indice in cui inserire il nuovo peer
+printf("*** I = %i\n", i);
 
-//se è uscito con significant == 0 aggiungo dopo altrimenti sposto tutto
+				//se con significant == 1 faccio shift
+		//					\/ I=2
+		// 		|  x  |  x  |  x  |  x  |     |
 
+				if(peer_registered[i].significant == 1) {
+					for(j = num_peer-1; j >= i; j--) {
+						peer_registered[j+1] = peer_registered[j];
+						peer_addr[j+1] = peer_addr[j];
+					}
+				}	
+
+				//altrimenti aggiungo di seguito
 				peer_addr[i] = connecting_addr;
 
 				strcpy(peer_registered[i].ip, first_arg);
@@ -206,29 +210,96 @@ printf("PEER_PORT: %s\n", second_arg);
 				num_peer++;
 
 printf("NUM_PEER: %i\n", num_peer);
-
+				
 				//invio le informazioni sui vicini
-				strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
-				strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
-				strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
-				strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
-				sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
-	
+
+				if(num_peer <= 2) {
+
+					if(num_peer == 1) {
+						sprintf(buffer, "NEIGHBORS");
+					}
+
+					if (num_peer == 2) {
+						strcpy(right_ip, peer_registered[1].ip);
+						strcpy(right_port, peer_registered[1].port);
+						sprintf(buffer, "NEIGHBORS %s %s", right_ip, right_port);
+
+						printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
+						
+						len = strlen(buffer)+1;
+
+						ret = sendto(sd, buffer, len, 0,
+							(struct sockaddr*)&peer_addr[0], sizeof(peer_addr[0]));
+						if (ret < 0)
+							perror("Errore invio risposta al peer\n");
+					}
+
+					strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
+					strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
+					strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
+					strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
+					sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+
+					printf("Invio vicini: %s\n", buffer);
+
+					len = strlen(buffer)+1;
+
+					ret = sendto(sd, buffer, len, 0,
+						(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+					if (ret < 0)
+						perror("Errore invio risposta al peer\n");
+					
+				} else {
+
+					if(num_peer > 2) {
+
+						for(j = 0; j < num_peer; j++) {
+
+							if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
+								
+								strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
+								strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
+								strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
+								strcpy(right_port, peer_registered[(j+1)%num_peer].port);
+								sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+							
+								printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
+
+								len = strlen(buffer)+1;
+
+								ret = sendto(sd, buffer, len, 0,
+									(struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
+								if (ret < 0)
+									perror("Errore invio risposta al peer\n");
+							}
+						}
+
+						strcpy(left_ip, peer_registered[(i-1)%num_peer].ip);
+						strcpy(left_port, peer_registered[(i-1)%num_peer].port);
+						strcpy(right_ip, peer_registered[(i+1)%num_peer].ip);
+						strcpy(right_port, peer_registered[(i+1)%num_peer].port);
+						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+
+						printf("Invio vicini: %s\n", buffer);
+
+						len = strlen(buffer)+1;
+
+						ret = sendto(sd, buffer, len, 0,
+							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+						if (ret < 0)
+							perror("Errore invio risposta al peer\n");
+
+					}
+				}
+
 /*
-for(i = 0; i < MAX_PEER; i++) {
+for(i = 0; i < 5; i++) {
 	printf("IP: %s\n", peer_registered[i].ip);
 	printf("PORT: %s\n", peer_registered[i].port);
 	printf("SIGN: %i\n", peer_registered[i].significant);
 }
 */
-				printf("Invio vicini: %s\n", buffer);
 
-				len = strlen(buffer)+1;
-
-				ret = sendto(sd, buffer, len, 0,
-				     (struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-				if (ret < 0)
-					perror("Errore invio risposta al peer\n");
 //printf("FINE SEND TO\n");
 			} 
 
