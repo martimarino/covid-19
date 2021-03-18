@@ -186,6 +186,12 @@ int main(int argc, char* argv[]){
 				closing_actions();
 				exit(0);
 			}
+
+			if(strcmp(command, "MAX_EXC") == 0) {
+				printf("Non è possibile registrarsi\n");
+				closing_actions();
+				exit(0);
+			}
 			
 		}
 
@@ -237,15 +243,15 @@ int main(int argc, char* argv[]){
 
 			}
 /*
-			if(strcmp(command, "add") == 0) {	
+			if((strcmp(command, "add") == 0) && (valid_input == 1)) {	
 				
 			}
 
-			if(strcmp(command, "get") == 0) {	
+			if((strcmp(command, "get") == 0) && (valid_input == 1)) {	
 
 			}
 */	
-			if(strcmp(command, "stop") == 0) {	
+			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 				printf("Terminazione forzata\n");
 				closing_actions();
 				exit(0);

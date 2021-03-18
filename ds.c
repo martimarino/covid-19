@@ -11,7 +11,7 @@
 #include <time.h>
 #include "shared.h"
 
-#define MAX_PEER        10
+#define MAX_PEER        5
 #define POLLING_TIME    5       //controllo ogni 5 secondi
 
 int i, j, k;
@@ -22,7 +22,9 @@ char peer_port[PORT_LEN];
 char ds_port[PORT_LEN];
 char* tmp_port;
 
+int valid_input;
 char* token;
+int howmany;
 char command[CMD_LEN];
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
@@ -80,12 +82,9 @@ void ds_connect() {
 
 	fdmax = sd;
 	printf("Socket creato: DS in ascolto...\n");
-//	printf("FDMAX: %i\n", fdmax);
-//	printf("SD: %i\n", sd);
-
 }
 
-void parse_string(char buffer[]) {
+int parse_string(char buffer[]) {
 
 	token = strtok(buffer, " ");
 
@@ -108,6 +107,18 @@ void parse_string(char buffer[]) {
 		
 		token = strtok(NULL, " ");
 	} 
+
+	if(((strcmp(command, "help") == 0) && (i != 1)) ||
+		((strcmp(command, "showpeers") == 0) && (i != 1)) ||
+		((strcmp(command, "showneighbor") == 0) && (i > 2)) ||
+		((strcmp(command, "esc") == 0) && (i != 1))) {
+		printf("Comando non riconosciuto\n");
+		valid_input = 0;
+	} else {
+		valid_input = 1;
+	}
+
+	return i;
 }
 
 int main(int argc, char* argv[]) {
@@ -172,91 +183,92 @@ int main(int argc, char* argv[]) {
 				printf("Messaggio ricevuto: %s\n", buffer);
 			} while (ret < 0);
 
-			parse_string(buffer);
+			howmany = parse_string(buffer);
 
 			if(strcmp(command, "BOOT") == 0) {
 				
 				//controllo sul numero di peer registrati
 				if(num_peer == MAX_PEER) {
-					perror("Errore: raggiunto il numero massimo di peer\n");
-					closing_actions();
-					exit(-1);
-				}
-				//registrazione del nuovo peer
-				for(i = 0; i < MAX_PEER; i++) {
-					if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
-						break;
-				}  		//i è l'indice in cui inserire il nuovo peer
-printf("*** I = %i\n", i);
+					printf("Errore: raggiunto il numero massimo di peer\n");
+					sprintf(buffer, "%s", "MAX_EXC");
+					len = strlen(buffer) + 1;
+					
+					ret = sendto(sd, buffer, len, 0,
+							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+					if(ret < 0)
+						sleep(POLLING_TIME);
 
-				//se con significant == 1 faccio shift
-		//					\/ I=2
-		// 		|  x  |  x  |  x  |  x  |     |
+				} else {
+					//registrazione del nuovo peer
+					for(i = 0; i < MAX_PEER; i++) {
+						if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
+							break;
+					}  		//i è l'indice in cui inserire il nuovo peer
 
-				if(peer_registered[i].significant == 1) {
-					for(j = num_peer-1; j >= i; j--) {
-						peer_registered[j+1] = peer_registered[j];
-						peer_addr[j+1] = peer_addr[j];
-					}
-				}	
+					//se con significant == 1 faccio shift
+					if(peer_registered[i].significant == 1) {
+						for(j = num_peer-1; j >= i; j--) {
+							peer_registered[j+1] = peer_registered[j];
+							peer_addr[j+1] = peer_addr[j];
+						}
+					}	
+			
+					//altrimenti aggiungo di seguito
+					peer_addr[i] = connecting_addr;
 
-				//altrimenti aggiungo di seguito
-				peer_addr[i] = connecting_addr;
+					strcpy(peer_registered[i].ip, first_arg);
+					strcpy(peer_registered[i].port, second_arg);
+					peer_registered[i].significant = 1;
 
-				strcpy(peer_registered[i].ip, first_arg);
-				strcpy(peer_registered[i].port, second_arg);
-				peer_registered[i].significant = 1;
+					num_peer++;
 
-				num_peer++;
-
-printf("NUM_PEER: %i\n", num_peer);
+					printf("NUM_PEER: %i\n", num_peer);
 				
-				//invio le informazioni sui vicini
+					//invio le informazioni sui vicini
 
-				if(num_peer <= 2) {
+					if(num_peer <= 2) {
 
-					if(num_peer == 1) {
-						sprintf(buffer, "NEIGHBORS");
-					}
+						if(num_peer == 1) {
+							sprintf(buffer, "NEIGHBORS");
+						}
 
-					if (num_peer == 2) {
-						strcpy(right_ip, peer_registered[1].ip);
-						strcpy(right_port, peer_registered[1].port);
-						sprintf(buffer, "NEIGHBORS %s %s", right_ip, right_port);
+						if (num_peer == 2) {
+							strcpy(right_ip, peer_registered[1].ip);
+							strcpy(right_port, peer_registered[1].port);
+							sprintf(buffer, "NEIGHBORS %s %s", right_ip, right_port);
 
-						printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
-						
+							printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
+							
+							len = strlen(buffer)+1;
+
+							ret = sendto(sd, buffer, len, 0,
+								(struct sockaddr*)&peer_addr[0], sizeof(peer_addr[0]));
+							if (ret < 0)
+								perror("Errore invio risposta al peer\n");
+						}
+
+						strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
+						strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
+						strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
+						strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
+						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+
+						printf("Invio vicini a %s: %s\n", peer_registered[i].port, buffer);
+
 						len = strlen(buffer)+1;
 
 						ret = sendto(sd, buffer, len, 0,
-							(struct sockaddr*)&peer_addr[0], sizeof(peer_addr[0]));
+							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 						if (ret < 0)
 							perror("Errore invio risposta al peer\n");
-					}
-
-					strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
-					strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
-					strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
-					strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
-					sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
-
-					printf("Invio vicini: %s\n", buffer);
-
-					len = strlen(buffer)+1;
-
-					ret = sendto(sd, buffer, len, 0,
-						(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-					if (ret < 0)
-						perror("Errore invio risposta al peer\n");
 					
-				} else {
-
-					if(num_peer > 2) {
+					} 
+					else if(num_peer > 2) {
 
 						for(j = 0; j < num_peer; j++) {
 
 							if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
-								
+							
 								strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
 								strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
 								strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
@@ -288,30 +300,19 @@ printf("NUM_PEER: %i\n", num_peer);
 							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
 						if (ret < 0)
 							perror("Errore invio risposta al peer\n");
-
-					}
-				}
-
-/*
-for(i = 0; i < 5; i++) {
-	printf("IP: %s\n", peer_registered[i].ip);
-	printf("PORT: %s\n", peer_registered[i].port);
-	printf("SIGN: %i\n", peer_registered[i].significant);
-}
-*/
-
-//printf("FINE SEND TO\n");
-			} 
-
-		}
+						
+					} //else > 2
+				} //else -> registrazione					
+			} //fine BOOT
+		} //fine FD_ISSET
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
 			scanf("%[^\n]", buffer);
 			scanf("%*c");
 		
-			parse_string(buffer);
+			howmany = parse_string(buffer);
 
-			if(strcmp(command, "help") == 0) {  printf("DENTRO HELP\n");
+			if((strcmp(command, "help") == 0) && (valid_input == 1)) {  printf("DENTRO HELP\n");
 				printf("\nDettaglio comandi:\n");
 				printf("1) help 		--> mostra i dettagli dei comandi\n");
 				printf("2) showpeers 		--> mostra un elenco dei peer connessi\n");
@@ -319,15 +320,61 @@ for(i = 0; i < 5; i++) {
 				printf("4) esc 			--> chiude il DS\n\n");
 			}
 
-			if(strcmp(command, "showpeers") == 0) {
-				
+			if((strcmp(command, "showpeers") == 0) && (valid_input == 1)) {
+				printf("Peer connessi: ");
+				for(i = 0; i < num_peer; i++) {
+					printf("%s ", peer_registered[i].port);
+				}
+				printf("\n");
 			}
 
-			if(strcmp(command, "there's a problem'") == 0) {
-				
+			if((strcmp(command, "showneighbor") == 0) && (valid_input == 1)) {
+				if(howmany == 1){
+					for(i = 0; i < num_peer; i++) {
+						printf("Peer: %s\t", peer_registered[i].port);
+						printf("Neighbors: ");
+						
+						if(num_peer == 2) {
+							if(i == 0) {
+								printf("%s ", peer_registered[1].ip);
+								printf("%s \n", peer_registered[1].port);
+							} else if (i == 1){
+								printf("%s ", peer_registered[0].ip);
+								printf("%s \n", peer_registered[0].port);
+							}
+						} else if (num_peer > 2) {
+							printf("%s ", peer_registered[(i+num_peer-1)%num_peer].ip);
+							printf("%s, ", peer_registered[(i+num_peer-1)%num_peer].port);
+							printf("%s ", peer_registered[(i+1)%num_peer].ip);
+							printf("%s \n", peer_registered[(i+1)%num_peer].port);
+						}
+					}
+				} else {
+					for(i = 0; i < num_peer; i++) {
+						if((strcmp(peer_registered[i].port, first_arg)) == 0) {	//cerco il peer
+							printf("Peer: %s\t", peer_registered[i].port);
+							printf("Neighbors: ");
+							if(num_peer == 2) {
+								if(i == 0) {
+									printf("%s ", peer_registered[1].ip);
+									printf("%s \n", peer_registered[1].port);
+								} else if (i == 1){
+									printf("%s ", peer_registered[0].ip);
+									printf("%s \n", peer_registered[0].port);
+								}
+							} 
+							else if(num_peer > 2) {
+								printf("%s ", peer_registered[(i+num_peer-1)%num_peer].ip);
+								printf("%s, ", peer_registered[(i+num_peer-1)%num_peer].port);
+								printf("%s ", peer_registered[(i+1)%num_peer].ip);
+								printf("%s \n", peer_registered[(i+1)%num_peer].port);
+							}
+						}
+					}
+				}
 			}
 
-			if(strcmp(command, "esc") == 0) {
+			if((strcmp(command, "esc") == 0) && (valid_input == 1)) {
 
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
@@ -344,10 +391,10 @@ for(i = 0; i < 5; i++) {
 
 				exit(0);
 			}			
-		}
-	}
+		} //FD_ISSET
+	} //while
 
 	closing_actions();
     
-}
+} //main
 
