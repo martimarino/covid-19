@@ -243,31 +243,46 @@ int main(int argc, char* argv[]) {
 					if(num_peer <= 2) {
 
 						if(num_peer == 1) {
-							sprintf(buffer, "NEIGHBORS");
-						}
-
-						if (num_peer == 2) {	//un solo vicino
-							strcpy(right_ip, peer_registered[1].ip);
-							strcpy(right_port, peer_registered[1].port);
-							sprintf(buffer, "NEIGHBORS %s %s", right_ip, right_port);
-
-							printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
-							
+							sprintf(buffer, "NEIGHBORS - - - -");
+							printf("%s\n", buffer);
 							sendToPeer(peer_addr[0]);
 						}
 
-						//componimento messaggio
-						strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
-						strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
-						strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
-						strcpy(right_port, peer_registered[(i+1)%MAX_PEER].port);
-						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+						if (num_peer == 2) {	//un solo vicino
+							
+							if(i == 1) {	//secondo peer in posizione 1
+								//aggiorno i vicini di 0
+								strcpy(right_ip, peer_registered[1].ip);
+								strcpy(right_port, peer_registered[1].port);
+								sprintf(buffer, "NEIGHBORS - - %s %s", right_ip, right_port);
+								printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
+								sendToPeer(peer_addr[0]);
 
-						printf("Invio vicini a %s: %s\n", peer_registered[i].port, buffer);
-						sendToPeer(connecting_addr);
-					
-					} 
-					else if(num_peer > 2) {
+								//invio a 1 il vicino 0
+								strcpy(left_ip, peer_registered[0].ip);
+								strcpy(left_port, peer_registered[0].port);
+								sprintf(buffer, "NEIGHBORS %s %s - -", left_ip, left_port);
+								printf("Invio vicini %s: %s\n", peer_registered[1].port, buffer);
+								sendToPeer(peer_addr[1]);
+							} else {		//nuovo peer in prima posizione
+								//aggiorno i vicini di 1
+								strcpy(left_ip, peer_registered[0].ip);
+								strcpy(left_port, peer_registered[0].port);
+								sprintf(buffer, "NEIGHBORS %s %s - -", left_ip, left_port);
+								printf("Invio vicini %s: %s\n", peer_registered[1].port, buffer);
+								sendToPeer(peer_addr[1]);
+
+								//invio a 0 il vicino 1
+								strcpy(right_ip, peer_registered[1].ip);
+								strcpy(right_port, peer_registered[1].port);
+								sprintf(buffer, "NEIGHBORS - - %s %s", right_ip, right_port);
+								printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
+								sendToPeer(peer_addr[0]);							
+							}
+
+						}
+
+					} else if(num_peer > 2) {
 
 						//comunico ai vicini di i il nuovo vicino
 						for(j = 0; j < num_peer; j++) {	//cerco i vicini del peer inserito
@@ -286,8 +301,8 @@ int main(int argc, char* argv[]) {
 						}
 
 						//invio al nuovo peer i propri vicini
-						strcpy(left_ip, peer_registered[(i-1)%num_peer].ip);
-						strcpy(left_port, peer_registered[(i-1)%num_peer].port);
+						strcpy(left_ip, peer_registered[(i-1+num_peer)%num_peer].ip);
+						strcpy(left_port, peer_registered[(i-1+num_peer)%num_peer].port);
 						strcpy(right_ip, peer_registered[(i+1)%num_peer].ip);
 						strcpy(right_port, peer_registered[(i+1)%num_peer].port);
 						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
@@ -300,31 +315,79 @@ int main(int argc, char* argv[]) {
 			} //fine BOOT
 
 			if(strcmp(command, "QUIT") == 0) {
+				//cerco il peer interessato
 				for(i = 0; i < num_peer; i++)
 					if((strcmp(peer_registered[i].ip, first_arg) == 0) && 
 					   (strcmp(peer_registered[i].port, second_arg) == 0))
 					   break;
-
-				num_peer--;
-
-				//eliminazione da coda
-				if(i == (num_peer)) {
-					//aggiorno i vicini del peer eliminato
-
-					if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
 					
-						strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
-						strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
-						strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
-						strcpy(right_port, peer_registered[(j+1)%num_peer].port);
-						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
-					
-						printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
-						sendToPeer(peer_addr[j]);
+				if(num_peer == 1)
+					num_peer--;
+
+				if(num_peer > 1) {		//se ce n'è solo uno non faccio nulla, altrimenti
+					if(num_peer == 2) {
+
+						if (i == 0) {	//eliminazione in testa
+							peer_registered[i] = peer_registered[1];
+							peer_addr[0] = peer_addr[1];
+						}
+						num_peer--;
+						sprintf(buffer, "NEIGHBORS - - - -");
+						printf("Aggiorno i vicini di %s: %s\n", peer_registered[0].port, buffer);
+						sendToPeer(peer_addr[0]);							
+						
+					} else if(num_peer > 2){
+
+						if(i == 0) {	//estrazione in testa
+
+							for(j = 0; j < num_peer; j++) {
+								//shift a sinistra
+								peer_addr[j] = peer_addr[j+1];
+								peer_registered[j] = peer_registered[j+1];
+							}
+
+							num_peer--;
+
+							//aggiorno nuovo in testa
+							if(num_peer == 2) {
+								strcpy(left_ip, "-");
+								strcpy(left_port, "-");
+							} else {
+								strcpy(left_ip, peer_registered[num_peer-1].ip);
+								strcpy(left_port, peer_registered[num_peer-1].port);
+							}
+							strcpy(right_ip, peer_registered[1].ip);
+							strcpy(right_port, peer_registered[1].port);
+							sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+							
+							printf("Invio vicini a %s: %s\n", peer_registered[0].port, buffer);
+							sendToPeer(peer_addr[0]);
+
+							//aggiorno l'ultimo in coda
+							strcpy(left_ip, peer_registered[num_peer-2].ip);
+							strcpy(left_port, peer_registered[num_peer-2].port);
+							if(num_peer == 2) {
+								strcpy(right_ip, "-");
+								strcpy(right_port, "-");
+							} else {
+								strcpy(right_ip, peer_registered[0].ip);
+								strcpy(right_port, peer_registered[0].port);
+							}
+							sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+
+							printf("Invio vicini a %s: %s\n", peer_registered[num_peer-1].port, buffer);
+							sendToPeer(peer_addr[num_peer-1]);
+							
+						} else if (i == (num_peer - 1)) {	//eliminazione in coda
+							
+
+						
+						} else {	//estrazione in mezzo
+							
+							
+						}
+
 					}
-					
-				} else {
-
 				}
 			}
 
@@ -354,23 +417,32 @@ int main(int argc, char* argv[]) {
 
 			if((strcmp(command, "showneighbor") == 0) && (valid_input == 1)) {
 				if(howmany == 1){	//neighbors di tutti i peer
-					for(i = 0; i < num_peer; i++) {
-						printf("Peer: %s\t", peer_registered[i].port);
-						printf("Neighbors: ");
-						
-						if(num_peer == 2) {
-							if(i == 0) {
-								printf("%s ", peer_registered[1].ip);
-								printf("%s \n", peer_registered[1].port);
-							} else if (i == 1){
-								printf("%s ", peer_registered[0].ip);
-								printf("%s \n", peer_registered[0].port);
+					if(num_peer == 0) {
+						printf("No peer registered\n");
+					} else {
+						for(i = 0; i < num_peer; i++) {
+							printf("Peer: %s\t", peer_registered[i].port);
+							printf("Neighbors: ");
+
+							if(num_peer == 1) 
+								printf("- - , - - \n");
+							
+							if(num_peer == 2) {
+								if(i == 0) {
+									printf("- - , ");
+									printf("%s ", peer_registered[1].ip);
+									printf("%s \n", peer_registered[1].port);
+								} else if (i == 1){
+									printf("%s ", peer_registered[0].ip);
+									printf("%s,", peer_registered[0].port);
+									printf(" - -\n");
+								}
+							} else if (num_peer > 2) {
+								printf("%s ", peer_registered[(i+num_peer-1)%num_peer].ip);
+								printf("%s, ", peer_registered[(i+num_peer-1)%num_peer].port);
+								printf("%s ", peer_registered[(i+1)%num_peer].ip);
+								printf("%s \n", peer_registered[(i+1)%num_peer].port);
 							}
-						} else if (num_peer > 2) {
-							printf("%s ", peer_registered[(i+num_peer-1)%num_peer].ip);
-							printf("%s, ", peer_registered[(i+num_peer-1)%num_peer].port);
-							printf("%s ", peer_registered[(i+1)%num_peer].ip);
-							printf("%s \n", peer_registered[(i+1)%num_peer].port);
 						}
 					}
 				} else { //neighbor di un peer specificato

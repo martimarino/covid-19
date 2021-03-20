@@ -176,7 +176,6 @@ int main(int argc, char* argv[]){
 		strcpy(peer_port, tmp_port);		
 	}
 
-
 	while(1) {
 
 		//reset dei descrittori
@@ -208,31 +207,15 @@ int main(int argc, char* argv[]){
 			howmany = parse_string(buffer);
 
 			if(strcmp(command, "NEIGHBORS") == 0) {	//aggiornamento
-			printf("HOWMANY: %i\n", howmany);
-				if(howmany == 1)
-					first_peer = 1;
+			
+				strcpy(my_neighbors.left_neighbor_ip, first_arg);
+				strcpy(my_neighbors.left_neighbor_port, second_arg);
+				strcpy(my_neighbors.right_neighbor_ip, third_arg);
+				strcpy(my_neighbors.right_neighbor_port, fourth_arg);
 				
-				if(howmany == 3) {	//un solo vicino (quando si inserisce il peer 2)
-					printf("CASO ==\n", howmany);
-					if(first_peer == 1) {
-						strcpy(my_neighbors.right_neighbor_ip, first_arg);
-						strcpy(my_neighbors.right_neighbor_port, second_arg);
-					} else {
-						strcpy(my_neighbors.left_neighbor_ip, first_arg);
-						strcpy(my_neighbors.left_neighbor_port, second_arg);
-					}
-					
-
-				} else if(howmany > 3) {	//più vicini
-					printf("CASO >\n");
-					strcpy(my_neighbors.left_neighbor_ip, first_arg);
-					strcpy(my_neighbors.left_neighbor_port, second_arg);
-					strcpy(my_neighbors.right_neighbor_ip, third_arg);
-					strcpy(my_neighbors.right_neighbor_port, fourth_arg);
-				}
 				printf("My neighbors:\n\tleft:  {%s, %s}\n\tright: {%s, %s}\n", 
-					my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port,
-					my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+					   my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port, 
+					   my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);		
 			}
 
 			if(strcmp(command, "ESC") == 0) {
