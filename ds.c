@@ -111,7 +111,9 @@ int parse_string(char buffer[]) {
 	if(((strcmp(command, "help") == 0) && (i != 1)) ||
 		((strcmp(command, "showpeers") == 0) && (i != 1)) ||
 		((strcmp(command, "showneighbor") == 0) && (i > 2)) ||
-		((strcmp(command, "esc") == 0) && (i != 1))) {
+		((strcmp(command, "esc") == 0) && (i != 1)) || 
+		((strcmp(command, "help") != 0) && (strcmp(command, "showpeers") != 0) &&
+		 (strcmp(command, "showneighbor") != 0) && (strcmp(command, "esc") != 0))) {
 		printf("Comando non riconosciuto\n");
 		valid_input = 0;
 	} else {

@@ -124,7 +124,9 @@ void parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	if(((strcmp(command, "start") == 0) && (i != 3)) ||
 		((strcmp(command, "add") == 0) && (i != 2)) ||
 		((strcmp(command, "get") == 0) && (i != 4)) ||
-		((strcmp(command, "stop") == 0) && (i != 1))) {
+		((strcmp(command, "stop") == 0) && (i != 1)) ||
+		((strcmp(command, "start") != 0) && (strcmp(command, "add") != 0) &&
+		 (strcmp(command, "get") != 0) && (strcmp(command, "stop") != 0))) {
 		printf("Comando non riconosciuto\n");
 		valid_input = 0;
 	} else {
