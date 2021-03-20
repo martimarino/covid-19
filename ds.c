@@ -11,31 +11,31 @@
 #include <time.h>
 #include "shared.h"
 
-#define MAX_PEER        5
-#define POLLING_TIME    5       //controllo ogni 5 secondi
+#define MAX_PEER        2
+#define POLLING_TIME    5   //controllo ogni 5 secondi
 
 int i, j, k;
 int ret, sd, len, addrlen;
 
-char peer_ip[ADDR_LEN];
-char peer_port[PORT_LEN];
 char ds_port[PORT_LEN];
-char* tmp_port;
+char* tmp_port;				//variabile per prelevare porta da terminale
 
-int valid_input;
-char* token;
-int howmany;
-char command[CMD_LEN];
+//variabili per i comandi
+int valid_input;			//indica se un comando ha formato corretto
+char* token;				//serve per la strtok
+int howmany;				//per comandi con campi opzionale
+char command[CMD_LEN];	
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
 
-fd_set master;		//set di tutti i descrittori
-fd_set read_fds;	//set dei descrittori in lettura
+//variabili per la select
+fd_set master;					//set di tutti i descrittori
+fd_set read_fds;				//set dei descrittori in lettura
 int fdmax;
 
 struct sockaddr_in my_addr, connecting_addr;    //struct per indirizzi
-struct sockaddr_in peer_addr[MAX_PEER];   //array indirizzi registrati
-int num_peer = 0;   //numero peer registrati
+struct sockaddr_in peer_addr[MAX_PEER];   		//array indirizzi registrati
+int num_peer = 0;   							//numero peer registrati
 
 char buffer[BUFFER_LEN];
 
@@ -49,7 +49,7 @@ char left_port[PORT_LEN];
 char right_ip[ADDR_LEN];
 char right_port[PORT_LEN];
 
-void closing_actions() {
+void closing_actions() {	//azioni da compiere quando DS termina
 	
 	close(sd);
 	FD_CLR(sd, &master);
@@ -62,7 +62,7 @@ void closing_actions() {
 
 }
 
-void ds_connect() {
+void ds_connect() {		//creazione socket
 
 	//creazione socket UPD non bloccante
     sd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -84,7 +84,7 @@ void ds_connect() {
 	printf("Socket creato: DS in ascolto...\n");
 }
 
-int parse_string(char buffer[]) {
+int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
 	token = strtok(buffer, " ");
 
@@ -108,12 +108,11 @@ int parse_string(char buffer[]) {
 		token = strtok(NULL, " ");
 	} 
 
+	//controlli formato messaggio
 	if(((strcmp(command, "help") == 0) && (i != 1)) ||
 		((strcmp(command, "showpeers") == 0) && (i != 1)) ||
 		((strcmp(command, "showneighbor") == 0) && (i > 2)) ||
-		((strcmp(command, "esc") == 0) && (i != 1)) || 
-		((strcmp(command, "help") != 0) && (strcmp(command, "showpeers") != 0) &&
-		 (strcmp(command, "showneighbor") != 0) && (strcmp(command, "esc") != 0))) {
+		((strcmp(command, "esc") == 0) && (i != 1))) {
 		printf("Comando non riconosciuto\n");
 		valid_input = 0;
 	} else {
@@ -121,6 +120,16 @@ int parse_string(char buffer[]) {
 	}
 
 	return i;
+}
+
+void sendToPeer(struct sockaddr_in addr) {
+		len = strlen(buffer) + 1;
+		do {
+			ret = sendto(sd, buffer, len, 0,
+					(struct sockaddr*)&addr, sizeof(addr));
+			if(ret < 0)
+				sleep(POLLING_TIME);
+		} while (ret < 0);
 }
 
 int main(int argc, char* argv[]) {
@@ -149,7 +158,6 @@ int main(int argc, char* argv[]) {
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(ds_port, tmp_port);		
-//printf("NUMERO DI PORTA: %s\n", ds_port);
 	}
 
 	//inizializzo l'array di struct
@@ -160,11 +168,11 @@ int main(int argc, char* argv[]) {
 	ds_connect();
 	printf("Digita un comando:\n");  
 
-		FD_ZERO(&master);			//svuota master
-		FD_ZERO(&read_fds);			//svuota read_fds
+	FD_ZERO(&master);			//svuota master
+	FD_ZERO(&read_fds);			//svuota read_fds
 
-		FD_SET(0, &master);			//aggiunge stdin a master
-		FD_SET(sd, &master);		//aggiunge sd a master
+	FD_SET(0, &master);			//aggiunge stdin a master
+	FD_SET(sd, &master);		//aggiunge sd a master
 
     while(1) {
 
@@ -185,7 +193,7 @@ int main(int argc, char* argv[]) {
 				printf("Messaggio ricevuto: %s\n", buffer);
 			} while (ret < 0);
 
-			howmany = parse_string(buffer);
+			howmany = parse_string(buffer);	
 
 			if(strcmp(command, "BOOT") == 0) {
 				
@@ -193,25 +201,9 @@ int main(int argc, char* argv[]) {
 				if(num_peer == MAX_PEER) {
 					printf("Errore: raggiunto il numero massimo di peer\n");
 					sprintf(buffer, "%s", "MAX_EXC");
-					len = strlen(buffer) + 1;
-					do {
-						ret = sendto(sd, buffer, len, 0,
-								(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-						if(ret < 0)
-							sleep(POLLING_TIME);
-					} while (ret < 0);
+					sendToPeer(connecting_addr);
 
-				} else {
-					
-					printf("Peer registrato\n");
-					sprintf(buffer, "%s", "ACK");
-					len = strlen(buffer) + 1;
-					do {
-						ret = sendto(sd, buffer, len, 0,
-								(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-						if(ret < 0)
-							sleep(POLLING_TIME);
-					} while (ret < 0);
+				} else {	//c'è ancora spazio nel buffer
 					
 					//registrazione del nuovo peer
 					for(i = 0; i < MAX_PEER; i++) {
@@ -237,30 +229,30 @@ int main(int argc, char* argv[]) {
 					num_peer++;
 
 					printf("NUM_PEER: %i\n", num_peer);
+
+					//comunico registrazione avvenuta
+					printf("Peer registrato\n");
+					sprintf(buffer, "%s", "ACK");
+					sendToPeer(connecting_addr);
 				
 					//invio le informazioni sui vicini
-
 					if(num_peer <= 2) {
 
 						if(num_peer == 1) {
 							sprintf(buffer, "NEIGHBORS");
 						}
 
-						if (num_peer == 2) {
+						if (num_peer == 2) {	//un solo vicino
 							strcpy(right_ip, peer_registered[1].ip);
 							strcpy(right_port, peer_registered[1].port);
 							sprintf(buffer, "NEIGHBORS %s %s", right_ip, right_port);
 
 							printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
 							
-							len = strlen(buffer)+1;
-
-							ret = sendto(sd, buffer, len, 0,
-								(struct sockaddr*)&peer_addr[0], sizeof(peer_addr[0]));
-							if (ret < 0)
-								perror("Errore invio risposta al peer\n");
+							sendToPeer(peer_addr[0]);
 						}
 
+						//componimento messaggio
 						strcpy(left_ip, peer_registered[(i-1)%MAX_PEER].ip);
 						strcpy(left_port, peer_registered[(i-1)%MAX_PEER].port);
 						strcpy(right_ip, peer_registered[(i+1)%MAX_PEER].ip);
@@ -268,18 +260,13 @@ int main(int argc, char* argv[]) {
 						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
 
 						printf("Invio vicini a %s: %s\n", peer_registered[i].port, buffer);
-
-						len = strlen(buffer)+1;
-
-						ret = sendto(sd, buffer, len, 0,
-							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-						if (ret < 0)
-							perror("Errore invio risposta al peer\n");
+						sendToPeer(connecting_addr);
 					
 					} 
 					else if(num_peer > 2) {
 
-						for(j = 0; j < num_peer; j++) {
+						//comunico ai vicini di i il nuovo vicino
+						for(j = 0; j < num_peer; j++) {	//cerco i vicini del peer inserito
 
 							if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
 							
@@ -290,16 +277,11 @@ int main(int argc, char* argv[]) {
 								sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
 							
 								printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
-
-								len = strlen(buffer)+1;
-
-								ret = sendto(sd, buffer, len, 0,
-									(struct sockaddr*)&peer_addr[j], sizeof(peer_addr[j]));
-								if (ret < 0)
-									perror("Errore invio risposta al peer\n");
+								sendToPeer(peer_addr[j]);
 							}
 						}
 
+						//invio al nuovo peer i propri vicini
 						strcpy(left_ip, peer_registered[(i-1)%num_peer].ip);
 						strcpy(left_port, peer_registered[(i-1)%num_peer].port);
 						strcpy(right_ip, peer_registered[(i+1)%num_peer].ip);
@@ -307,13 +289,7 @@ int main(int argc, char* argv[]) {
 						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
 
 						printf("Invio vicini a %s: %s\n", peer_registered[i].port, buffer);
-
-						len = strlen(buffer)+1;
-
-						ret = sendto(sd, buffer, len, 0,
-							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-						if (ret < 0)
-							perror("Errore invio risposta al peer\n");
+						sendToPeer(connecting_addr);
 						
 					} //else > 2
 				} //else -> registrazione					
@@ -392,12 +368,10 @@ int main(int argc, char* argv[]) {
 
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
-				for(i = 0; i < MAX_PEER; i++) {
+				//comunico a tutti i peer registrati la terminazione
+				for(i = 0; i < MAX_PEER; i++) {	
 					if(peer_registered[i].significant == 1) {
-						ret = sendto(sd, buffer, len, 0,
-							     (struct sockaddr*)&peer_addr[i], sizeof(peer_addr[i]));
-						if(ret < 0)
-							sleep(POLLING_TIME);
+						sendToPeer(peer_addr[i]);
 					}
 				}
 

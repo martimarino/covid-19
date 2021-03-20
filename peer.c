@@ -33,6 +33,7 @@ char command[CMD_LEN+1];	//primo campo di un messaggio
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
 char third_arg[BUFFER_LEN];
+char fourth_arg[BUFFER_LEN];
 
 struct sockaddr_in srv_addr, my_addr;
 char buffer[BUFFER_LEN];
@@ -112,6 +113,9 @@ void parse_string(char buffer[]) {	//separa gli argomenti di un comando
 			case 3:
 				sscanf(token, "%s", &third_arg);
 				break;
+			case 4:
+				sscanf(token, "%s", &fourth_arg);
+				break;
 			default:
 				printf("Comando non riconosciuto\n");
 				break;
@@ -124,9 +128,7 @@ void parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	if(((strcmp(command, "start") == 0) && (i != 3)) ||
 		((strcmp(command, "add") == 0) && (i != 2)) ||
 		((strcmp(command, "get") == 0) && (i != 4)) ||
-		((strcmp(command, "stop") == 0) && (i != 1)) ||
-		((strcmp(command, "start") != 0) && (strcmp(command, "add") != 0) &&
-		 (strcmp(command, "get") != 0) && (strcmp(command, "stop") != 0))) {
+		((strcmp(command, "stop") == 0) && (i != 1))) {
 		printf("Comando non riconosciuto\n");
 		valid_input = 0;
 	} else {
@@ -199,11 +201,6 @@ int main(int argc, char* argv[]){
 				exit(0);
 			}
 
-			if(strcmp(command, "MAX_EXC") == 0) {
-				printf("Non è possibile registrarsi\n");
-				closing_actions();
-				exit(0);
-			}
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -270,6 +267,12 @@ int main(int argc, char* argv[]){
 							if(strcmp(command, "ACK") == 0) {
 								peer_registered = 1;
 								break;
+							}
+
+							if(strcmp(command, "MAX_EXC") == 0) {
+								printf("Non è possibile registrarsi\n");
+								closing_actions();
+								exit(0);
 							}
 						}
 
