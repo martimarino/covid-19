@@ -11,7 +11,7 @@
 #include <time.h>
 #include "shared.h"
 
-#define MAX_PEER        2
+#define MAX_PEER        5
 #define POLLING_TIME    5   //controllo ogni 5 secondi
 
 int i, j, k;
@@ -43,7 +43,14 @@ time_t rawtime;
 
 char DS_file[] = "DS_register.txt";
 
+struct Peer {
+	char ip[ADDR_LEN];
+	char port[PORT_LEN];
+	int significant;
+};
 struct Peer peer_registered[MAX_PEER];
+
+//variabili temporanee per la comunicazione dei vicini
 char left_ip[ADDR_LEN];
 char left_port[PORT_LEN];
 char right_ip[ADDR_LEN];

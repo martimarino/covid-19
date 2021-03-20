@@ -24,11 +24,13 @@ char* tmp_port;				//variabile per prelevare porta da terminale
 
 int peer_connected = 0;		//indica se il socket è stato creato
 int peer_registered = 0;	//indica se il peer è registrato con un DS	
+int first_peer = 0;			//primo a connettersi al DS
 
 
 //variabili per prelevare i campi di un messaggio
 char *token;				//per l'utilizzo di strtok
 int valid_input = 1;		//indica se un comando ha il fomato corretto
+int howmany;				//numero token (compreso cmd)
 char command[CMD_LEN+1];	//primo campo di un messaggio
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
@@ -51,6 +53,13 @@ char filename[] = "register.txt";
 //variabili per il polling del boot
 int nfds, num_open_fds, ready;
 struct pollfd *pfds;
+
+struct Neighbors {
+	char left_neighbor_ip[ADDR_LEN];
+	char left_neighbor_port[PORT_LEN];
+	char right_neighbor_ip[ADDR_LEN];
+	char right_neighbor_port[PORT_LEN];
+} my_neighbors;
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
@@ -78,7 +87,7 @@ void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
     if (ret < 0){
         perror("Bind non riuscita ");
-		if(peer_connected == 0) {	//se il peer è gia registrato non faexit
+		if(peer_connected == 0) {	//se il peer è gia registrato non fa exit
 			closing_actions();
 			exit(-1);
 		}
@@ -92,9 +101,10 @@ void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
 	fdmax = sd;
 	peer_connected = 1;
 	printf("Socket creato\n");
+
 }
 
-void parse_string(char buffer[]) {	//separa gli argomenti di un comando
+int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
 	token = strtok(buffer, " ");
 
@@ -134,6 +144,8 @@ void parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	} else {
 		valid_input = 1;
 	}
+
+	return i;
 }
 
 int main(int argc, char* argv[]){
@@ -193,7 +205,35 @@ int main(int argc, char* argv[]){
 			} while(ret < 0);
 			printf("Ricevuto: %s\n", buffer);
 
-			parse_string(buffer);
+			howmany = parse_string(buffer);
+
+			if(strcmp(command, "NEIGHBORS") == 0) {	//aggiornamento
+			printf("HOWMANY: %i\n", howmany);
+				if(howmany == 1)
+					first_peer = 1;
+				
+				if(howmany == 3) {	//un solo vicino (quando si inserisce il peer 2)
+					printf("CASO ==\n", howmany);
+					if(first_peer == 1) {
+						strcpy(my_neighbors.right_neighbor_ip, first_arg);
+						strcpy(my_neighbors.right_neighbor_port, second_arg);
+					} else {
+						strcpy(my_neighbors.left_neighbor_ip, first_arg);
+						strcpy(my_neighbors.left_neighbor_port, second_arg);
+					}
+					
+
+				} else if(howmany > 3) {	//più vicini
+					printf("CASO >\n");
+					strcpy(my_neighbors.left_neighbor_ip, first_arg);
+					strcpy(my_neighbors.left_neighbor_port, second_arg);
+					strcpy(my_neighbors.right_neighbor_ip, third_arg);
+					strcpy(my_neighbors.right_neighbor_port, fourth_arg);
+				}
+				printf("My neighbors:\n\tleft:  {%s, %s}\n\tright: {%s, %s}\n", 
+					my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port,
+					my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+			}
 
 			if(strcmp(command, "ESC") == 0) {
 				printf("Chiusura a causa dell terminazione del DS\n");
