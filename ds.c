@@ -46,7 +46,6 @@ char DS_file[] = "DS_register.txt";
 struct Peer {
 	char ip[ADDR_LEN];
 	char port[PORT_LEN];
-	int significant;
 };
 struct Peer peer_registered[MAX_PEER];
 
@@ -167,10 +166,6 @@ int main(int argc, char* argv[]) {
 		strcpy(ds_port, tmp_port);		
 	}
 
-	//inizializzo l'array di struct
-	for(i = 0; i < MAX_PEER; i++)
-		peer_registered[i].significant = 0;
-
     printf("******************* DS COVID STARTED *******************\n");
 	ds_connect();
 	printf("Digita un comando:\n");  
@@ -213,25 +208,27 @@ int main(int argc, char* argv[]) {
 				} else {	//c'è ancora spazio nel buffer
 					
 					//registrazione del nuovo peer
-					for(i = 0; i < MAX_PEER; i++) {
-						if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
+					for(i = 0; i < num_peer; i++) {
+						if ((num_peer == 0) || (atoi(second_arg) < atoi(peer_registered[i].port)))
 							break;
 					}  		//i è l'indice in cui inserire il nuovo peer
 
-					//se con significant == 1 faccio shift
-					if(peer_registered[i].significant == 1) {
+					printf("I: %i\n", i);
+
+					// faccio shift
+					// (inserimento tra due peer)
+					if(i < num_peer) {
 						for(j = num_peer-1; j >= i; j--) {
 							peer_registered[j+1] = peer_registered[j];
 							peer_addr[j+1] = peer_addr[j];
 						}
-					}	
+					}
 			
 					//altrimenti aggiungo di seguito
 					peer_addr[i] = connecting_addr;
 
 					strcpy(peer_registered[i].ip, first_arg);
 					strcpy(peer_registered[i].port, second_arg);
-					peer_registered[i].significant = 1;
 
 					num_peer++;
 
@@ -242,7 +239,7 @@ int main(int argc, char* argv[]) {
 					sprintf(buffer, "%s", "ACK");
 					sendToPeer(connecting_addr);
 				
-					//invio le informazioni sui vicini
+					//invio le informazioni sui vicini al nuovo peer
 					if(num_peer <= 2) {
 
 						if(num_peer == 1) {
@@ -301,6 +298,36 @@ int main(int argc, char* argv[]) {
 					} //else > 2
 				} //else -> registrazione					
 			} //fine BOOT
+
+			if(strcmp(command, "QUIT") == 0) {
+				for(i = 0; i < num_peer; i++)
+					if((strcmp(peer_registered[i].ip, first_arg) == 0) && 
+					   (strcmp(peer_registered[i].port, second_arg) == 0))
+					   break;
+
+				num_peer--;
+
+				//eliminazione da coda
+				if(i == (num_peer)) {
+					//aggiorno i vicini del peer eliminato
+
+					if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
+					
+						strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
+						strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
+						strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
+						strcpy(right_port, peer_registered[(j+1)%num_peer].port);
+						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+					
+						printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
+						sendToPeer(peer_addr[j]);
+					}
+					
+				} else {
+
+				}
+			}
+
 		} //fine FD_ISSET
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -372,18 +399,13 @@ int main(int argc, char* argv[]) {
 			}
 
 			if((strcmp(command, "esc") == 0) && (valid_input == 1)) {
-
 				sprintf(buffer, "%s", "ESC");
 				len = strlen(buffer) + 1;
 				//comunico a tutti i peer registrati la terminazione
-				for(i = 0; i < MAX_PEER; i++) {	
-					if(peer_registered[i].significant == 1) {
-						sendToPeer(peer_addr[i]);
-					}
-				}
-
+				for(i = 0; i < num_peer; i++) 
+					sendToPeer(peer_addr[i]);
+				
 				closing_actions();
-
 				exit(0);
 			}			
 		} //FD_ISSET
