@@ -15,13 +15,21 @@
 
 #define POLLING_TIME  5
 #define RES_LEN       26    // Wed Dec 09 17:41:29 2020\0\n
+#define ACK_LEN 	  3
 
 int ret, sd, len, i;
 char localhost[ADDR_LEN] = "127.0.0.1\0";
-char peer_port[PORT_LEN];
-char* tmp_port;
-int peer_connected = 0;
-char command[CMD_LEN+1];
+char peer_port[PORT_LEN];	//porta del peer attuale
+char* tmp_port;				//variabile per prelevare porta da terminale
+
+int peer_connected = 0;		//indica se il socket è stato creato
+int peer_registered = 0;	//indica se il peer è registrato con un DS	
+
+
+//variabili per prelevare i campi di un messaggio
+char *token;				//per l'utilizzo di strtok
+int valid_input = 1;		//indica se un comando ha il fomato corretto
+char command[CMD_LEN+1];	//primo campo di un messaggio
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
 char third_arg[BUFFER_LEN];
@@ -29,23 +37,21 @@ char third_arg[BUFFER_LEN];
 struct sockaddr_in srv_addr, my_addr;
 char buffer[BUFFER_LEN];
 
-// informazioni da inviare al server
-char info[BUFFER_LEN];
-
-//struct Request req;
-
+//variabili per select()
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
 int fdmax = 0;
 
-char *token;
-int valid_input = 1;
-
+//variabili per il file del peer
 FILE* fd;
 char filepath[BUFFER_LEN];
 char filename[] = "register.txt";
 
-void closing_actions() {
+//variabili per il polling del boot
+int nfds, num_open_fds, ready;
+struct pollfd *pfds;
+
+void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
 
@@ -57,7 +63,7 @@ void closing_actions() {
 	FD_CLR(sd, &master);
 }
 
-void peer_connect(char DS_addr[], char DS_port[]) {
+void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
     /* Creazione socket */
     sd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -70,9 +76,11 @@ void peer_connect(char DS_addr[], char DS_port[]) {
     /* Aggancio */
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
     if (ret < 0){
-        perror("Bind non riuscita: \n");
-		closing_actions();
-        exit(-1);
+        perror("Bind non riuscita ");
+		if(peer_connected == 0) {	//se il peer è gia registrato non faexit
+			closing_actions();
+			exit(-1);
+		}
     }
     /* Creazione indirizzo del server */
     memset (&srv_addr, 0, sizeof(srv_addr)); 
@@ -82,10 +90,10 @@ void peer_connect(char DS_addr[], char DS_port[]) {
 
 	fdmax = sd;
 	peer_connected = 1;
-	printf("Connessione con il DS effettuata\n");
+	printf("Socket creato\n");
 }
 
-void parse_string(char buffer[]) {
+void parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
 	token = strtok(buffer, " ");
 
@@ -112,6 +120,7 @@ void parse_string(char buffer[]) {
 		token = strtok(NULL, " ");
 	}
 
+//controllo del formato
 	if(((strcmp(command, "start") == 0) && (i != 3)) ||
 		((strcmp(command, "add") == 0) && (i != 2)) ||
 		((strcmp(command, "get") == 0) && (i != 4)) ||
@@ -150,7 +159,8 @@ int main(int argc, char* argv[]){
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(peer_port, tmp_port);		
 	}
-	
+
+
 	while(1) {
 
 		//reset dei descrittori
@@ -192,7 +202,6 @@ int main(int argc, char* argv[]){
 				closing_actions();
 				exit(0);
 			}
-			
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -201,24 +210,83 @@ int main(int argc, char* argv[]){
 			scanf("%*c");
 			
 			parse_string(buffer);
+		
 
-			if((strcmp(command, "start") == 0) && (valid_input == 1)){
 
+			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 1)){
+				printf("Errore: peer già registato presso il DS\n");
+			}
+
+			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 0)){
+				
 				printf("Richiesta connessione al DS...\n");
 				peer_connect(first_arg, second_arg);
 
-				do {
-					//copio la struct nel buffer da inviare
-					sprintf(buffer, "BOOT %s %s", localhost, peer_port);
-					len = strlen(buffer)+1;
-					printf("Boot message inviato: %s\n", buffer);
-					// Tento di inviare le informazioni di boot continuamente        
-					ret = sendto(sd, buffer, len, 0,
-									(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-					// Se la richiesta non e' stata inviata vado a dormire per un poco
-					if (ret < 0)
-								sleep(POLLING_TIME);
-				} while (ret < 0);
+				num_open_fds = nfds = 2;	
+				pfds = calloc(nfds, sizeof(struct pollfd));
+				if(pfds == NULL)
+					perror("Allocazione pfds fallita");
+				pfds[0].fd = 0;
+				pfds[0].events = POLLIN;
+				pfds[1].fd = sd;
+				pfds[1].events = POLLIN;
+
+				while(1) {
+
+					do {
+						//copio la struct nel buffer da inviare
+						sprintf(buffer, "BOOT %s %s", localhost, peer_port);
+						len = strlen(buffer)+1;
+						printf("Boot message inviato: %s\n", buffer);
+						// Tento di inviare le informazioni di boot continuamente        
+						ret = sendto(sd, buffer, len, 0,
+										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+						// Se la richiesta non e' stata inviata vado a dormire per un poco
+						if (ret < 0)
+							sleep(POLLING_TIME);
+						
+					} while (ret < 0);
+
+					ready = poll(pfds, nfds, 4000);
+
+					if(ready) {
+						if(pfds[1].revents) {	// riceve qualcosa da DS
+							do {
+								/* Tento di ricevere i dati dal server  */
+								ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
+												(struct sockaddr*)&srv_addr, &len);
+
+								/* Se non ricevo niente vado a dormire per un poco */
+								if (ret < 0)
+									sleep(POLLING_TIME);
+
+							} while(ret < 0);
+							printf("Ho ricevuto: %s\n", buffer);
+
+							parse_string(buffer);
+
+							if(strcmp(command, "ACK") == 0) {
+								peer_registered = 1;
+								break;
+							}
+						}
+
+						if(pfds[0].revents) {	// può ricevere stop da terminale
+							
+							scanf("%[^\n]", buffer);
+							scanf("%*c");
+
+							parse_string(buffer);
+							
+							if((strcmp(command, "stop") == 0) && (valid_input == 1)) {
+								printf("Terminazione forzata\n");
+								closing_actions();
+								exit(0);
+							}
+
+						}
+					}
+				}
 			
 //printf("INFO BOOT INVIATE\n");
 
@@ -252,6 +320,21 @@ int main(int argc, char* argv[]){
 			}
 */	
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
+			
+				do {
+					//invio 
+					sprintf(buffer, "QUIT %s %s", localhost, peer_port);
+					len = strlen(buffer)+1;
+					printf("Comunicazione di terminazione al DS: %s\n", buffer);
+					// Tento di inviare le informazioni di boot continuamente        
+					ret = sendto(sd, buffer, len, 0,
+									(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+					// Se la richiesta non e' stata inviata vado a dormire per un poco
+					if (ret < 0)
+								sleep(POLLING_TIME);
+				} while (ret < 0);
+
+
 				printf("Terminazione forzata\n");
 				closing_actions();
 				exit(0);

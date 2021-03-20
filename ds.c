@@ -158,13 +158,13 @@ int main(int argc, char* argv[]) {
 	ds_connect();
 	printf("Digita un comando:\n");  
 
-    while(1) {
-
 		FD_ZERO(&master);			//svuota master
 		FD_ZERO(&read_fds);			//svuota read_fds
 
 		FD_SET(0, &master);			//aggiunge stdin a master
 		FD_SET(sd, &master);		//aggiunge sd a master
+
+    while(1) {
 
 		read_fds = master;  
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
@@ -192,13 +192,25 @@ int main(int argc, char* argv[]) {
 					printf("Errore: raggiunto il numero massimo di peer\n");
 					sprintf(buffer, "%s", "MAX_EXC");
 					len = strlen(buffer) + 1;
-					
-					ret = sendto(sd, buffer, len, 0,
-							(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
-					if(ret < 0)
-						sleep(POLLING_TIME);
+					do {
+						ret = sendto(sd, buffer, len, 0,
+								(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+						if(ret < 0)
+							sleep(POLLING_TIME);
+					} while (ret < 0);
 
 				} else {
+					
+					printf("Peer registrato\n");
+					sprintf(buffer, "%s", "ACK");
+					len = strlen(buffer) + 1;
+					do {
+						ret = sendto(sd, buffer, len, 0,
+								(struct sockaddr*)&connecting_addr, sizeof(connecting_addr));
+						if(ret < 0)
+							sleep(POLLING_TIME);
+					} while (ret < 0);
+					
 					//registrazione del nuovo peer
 					for(i = 0; i < MAX_PEER; i++) {
 						if ((atoi(second_arg) < atoi(peer_registered[i].port)) || (peer_registered[i].significant == 0))
@@ -292,7 +304,7 @@ int main(int argc, char* argv[]) {
 						strcpy(right_port, peer_registered[(i+1)%num_peer].port);
 						sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
 
-						printf("Invio vicini: %s\n", buffer);
+						printf("Invio vicini a %s: %s\n", peer_registered[i].port, buffer);
 
 						len = strlen(buffer)+1;
 
@@ -329,7 +341,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			if((strcmp(command, "showneighbor") == 0) && (valid_input == 1)) {
-				if(howmany == 1){
+				if(howmany == 1){	//neighbors di tutti i peer
 					for(i = 0; i < num_peer; i++) {
 						printf("Peer: %s\t", peer_registered[i].port);
 						printf("Neighbors: ");
@@ -349,7 +361,7 @@ int main(int argc, char* argv[]) {
 							printf("%s \n", peer_registered[(i+1)%num_peer].port);
 						}
 					}
-				} else {
+				} else { //neighbor di un peer specificato
 					for(i = 0; i < num_peer; i++) {
 						if((strcmp(peer_registered[i].port, first_arg)) == 0) {	//cerco il peer
 							printf("Peer: %s\t", peer_registered[i].port);
