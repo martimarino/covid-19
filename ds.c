@@ -213,8 +213,6 @@ int main(int argc, char* argv[]) {
 							break;
 					}  		//i è l'indice in cui inserire il nuovo peer
 
-					printf("I: %i\n", i);
-
 					// faccio shift
 					// (inserimento tra due peer)
 					if(i < num_peer) {

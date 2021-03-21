@@ -11,6 +11,7 @@
 #include <time.h>
 #include <poll.h>
 #include <errno.h>
+#include <sys/timerfd.h>
 #include "shared.h"
 
 #define POLLING_TIME  5
@@ -25,7 +26,6 @@ char* tmp_port;				//variabile per prelevare porta da terminale
 int peer_connected = 0;		//indica se il socket è stato creato
 int peer_registered = 0;	//indica se il peer è registrato con un DS	
 int first_peer = 0;			//primo a connettersi al DS
-
 
 //variabili per prelevare i campi di un messaggio
 char *token;				//per l'utilizzo di strtok
@@ -62,18 +62,22 @@ struct Neighbors {
 } my_neighbors;
 
 struct Entry {
-	time_t date;
-	char type[1];
-	int quantity;
-};
+	char date[11];
+	int nuoviCasi;
+	int tamponi;
+} my_entry;
 
-time_t now, tmp;
+time_t now;
 struct tm *todayDateTime, *tomorrowDateTime, *tmpDate;
 char timeToCheck[6];
 int monthDays, day, month, year;
 char dd[3], mm[3], YY[5];
-
-
+/*
+//variabili per il timer
+int tfd;
+char dummybuf[8];
+struct itimerspec spec;
+*/
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
@@ -148,7 +152,7 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
 	//controllo del formato
 	if(((strcmp(command, "start") == 0) && (i != 3)) ||
-		((strcmp(command, "add") == 0) && (i != 2)) ||
+		((strcmp(command, "add") == 0) && (i != 3)) ||
 		((strcmp(command, "get") == 0) && (i != 4)) ||
 		((strcmp(command, "stop") == 0) && (i != 1))) {
 		printf("Comando non riconosciuto\n");
@@ -158,6 +162,11 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	}
 
 	return i;
+}
+
+void updateFile() {	//salva dati odierni su file
+	fprintf(fd, "%s, %i, %i", my_entry.date, 
+			my_entry.nuoviCasi, my_entry.tamponi);
 }
 
 int daysInAMonth(int m) {
@@ -173,14 +182,14 @@ int daysInAMonth(int m) {
 
 struct tm* nextDay (struct tm *today) {
 
-	tmpDate = localtime(&now);tmp = mktime(tmpDate); 
+	tmpDate = localtime(&now);
 	strftime(dd, sizeof(dd), "%d", today);
 	strftime(mm, sizeof(mm), "%m", today);
 	strftime(YY, sizeof(YY), "%Y", today);
 
 	monthDays = daysInAMonth(atoi(mm));
 	if(tmpDate->tm_mday != monthDays) {
-		tmpDate->tm_mday = atoi(dd)+1; printf("CASO 1\n");
+		tmpDate->tm_mday = atoi(dd)+1;
 	}
 	if(tmpDate->tm_mday == monthDays) {
 		tmpDate->tm_mday = 1;
@@ -199,6 +208,7 @@ void createRegisterName() {
 	time(&now);
 	todayDateTime = localtime(&now);
 	strftime(filename, sizeof(filename), "%F", todayDateTime);
+	
 	if(inTime() == 0)
 	{
 		tomorrowDateTime = nextDay(todayDateTime); 
@@ -218,10 +228,10 @@ int inTime() {
 	todayDateTime = localtime(&now);
 	strftime(timeToCheck, sizeof(filename), "%R", todayDateTime);
 
-	if(strcmp(timeToCheck, "18:00\0") < 0) {return 0;
-		//return 1;
-	} else {  return 1;
-		//return 0;
+	if(strcmp(timeToCheck, "18:00\0") < 0) {//return 0;
+		return 1;
+	} else {  //return 1;
+		return 0;
 	}
 }
 
@@ -232,8 +242,12 @@ void checkTime() {	//controlla se bisogna chiudere il file
 	if(inTime() == 0) {
 		printf("Time's over: %s\n", timeToCheck);
 		fclose(fd);
+		//salvataggio su file
+		updateFile();
 		printf("Registro della data odierno chiuso\n");
 		createRegisterName();
+		strcpy(my_entry.date, filename);	//aggiorna data
+		//apre file giorno successivo
 		fd = fopen(filepath, "w");
 		if(fd == NULL)
 			perror("Error: ");
@@ -272,6 +286,7 @@ int main(int argc, char* argv[]){
 	}
 
 	createRegisterName();
+	strcpy(my_entry.date, filename);
 
 	while(1) {
 
@@ -430,11 +445,19 @@ int main(int argc, char* argv[]){
 				printf("Attendo risposta dal DS...\n");
 			}
 
-/*
-			if((strcmp(command, "add") == 0) && (valid_input == 1)) {	
-				
-			}
 
+			if((strcmp(command, "add") == 0) && (valid_input == 1)) {	
+				if(strcmp(first_arg, "N") == 0) {
+					my_entry.nuoviCasi = my_entry.nuoviCasi+atoi(second_arg);
+				} else if (strcmp(first_arg, "T") == 0) {
+					my_entry.tamponi = my_entry.tamponi+atoi(second_arg);
+				} else {
+					printf("Errore: type può essere N o T\n");
+				}
+				printf("STRUTTURA:\ndata: %s\ntamponi: %i\nnuovi casi: %i\n",
+					my_entry.date, my_entry.tamponi, my_entry.nuoviCasi);
+			}	
+/*
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {	
 				
 			}
