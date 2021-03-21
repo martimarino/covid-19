@@ -48,7 +48,7 @@ int fdmax = 0;
 //variabili per il file del peer
 FILE* fd;
 char filepath[BUFFER_LEN];
-char filename[] = "register.txt";
+char filename[11];
 
 //variabili per il polling del boot
 int nfds, num_open_fds, ready;
@@ -60,6 +60,19 @@ struct Neighbors {
 	char right_neighbor_ip[ADDR_LEN];
 	char right_neighbor_port[PORT_LEN];
 } my_neighbors;
+
+struct Entry {
+	time_t date;
+	char type[1];
+	int quantity;
+};
+
+time_t now, tmp;
+struct tm *todayDateTime, *tomorrowDateTime, *tmpDate;
+char timeToCheck[6];
+int monthDays, day, month, year;
+char dd[3], mm[3], YY[5];
+
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
@@ -129,12 +142,11 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 			default:
 				printf("Comando non riconosciuto\n");
 				break;
-		
 		}
 		token = strtok(NULL, " ");
 	}
 
-//controllo del formato
+	//controllo del formato
 	if(((strcmp(command, "start") == 0) && (i != 3)) ||
 		((strcmp(command, "add") == 0) && (i != 2)) ||
 		((strcmp(command, "get") == 0) && (i != 4)) ||
@@ -146,6 +158,89 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	}
 
 	return i;
+}
+
+int daysInAMonth(int m) {
+	if(m >= 1 && m <= 12) {
+		if(m == 2)
+			return 28;
+		if(m == 4 || m == 6 || m == 9 || m == 11)
+			return 30;
+		return 31;
+	}
+	return 0;
+}
+
+struct tm* nextDay (struct tm *today) {
+
+	tmpDate = localtime(&now);tmp = mktime(tmpDate); 
+	strftime(dd, sizeof(dd), "%d", today);
+	strftime(mm, sizeof(mm), "%m", today);
+	strftime(YY, sizeof(YY), "%Y", today);
+
+	monthDays = daysInAMonth(atoi(mm));
+	if(tmpDate->tm_mday != monthDays) {
+		tmpDate->tm_mday = atoi(dd)+1; printf("CASO 1\n");
+	}
+	if(tmpDate->tm_mday == monthDays) {
+		tmpDate->tm_mday = 1;
+		tmpDate->tm_mon = atoi(mm)+1;
+	}
+	if((tmpDate->tm_mon == 12) && (tmpDate->tm_mday == 31)) {
+		tmpDate->tm_mday = 1;
+		tmpDate->tm_mon = 1;
+		tmpDate->tm_year = atoi(YY)+1-1900;
+	}
+	return tmpDate;
+}
+
+void createRegisterName() {
+
+	time(&now);
+	todayDateTime = localtime(&now);
+	strftime(filename, sizeof(filename), "%F", todayDateTime);
+	if(inTime() == 0)
+	{
+		tomorrowDateTime = nextDay(todayDateTime); 
+		strftime(filename, sizeof(filename), "%F", tomorrowDateTime);
+	}
+	
+	printf("FILENAME: %s\n", filename);
+
+	strcpy(filepath, "./");
+	strcat(filepath, peer_port);
+	strcat(filepath, "/");
+	strcat(filepath, filename);
+}
+
+int inTime() {
+	time(&now);
+	todayDateTime = localtime(&now);
+	strftime(timeToCheck, sizeof(filename), "%R", todayDateTime);
+
+	if(strcmp(timeToCheck, "18:00\0") < 0) {return 0;
+		//return 1;
+	} else {  return 1;
+		//return 0;
+	}
+}
+
+void checkTime() {	//controlla se bisogna chiudere il file
+
+	time(&now);
+	todayDateTime = localtime(&now);
+	if(inTime() == 0) {
+		printf("Time's over: %s\n", timeToCheck);
+		fclose(fd);
+		printf("Registro della data odierno chiuso\n");
+		createRegisterName();
+		fd = fopen(filepath, "w");
+		if(fd == NULL)
+			perror("Error: ");
+	}
+	else {
+		printf("Not yet: %s\n", timeToCheck);
+	}
 }
 
 int main(int argc, char* argv[]){
@@ -176,6 +271,8 @@ int main(int argc, char* argv[]){
 		strcpy(peer_port, tmp_port);		
 	}
 
+	createRegisterName();
+
 	while(1) {
 
 		//reset dei descrittori
@@ -189,8 +286,11 @@ int main(int argc, char* argv[]){
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
 		// select ritorna quando un descrittore è pronto
 
+		if(peer_connected == 1)
+			checkTime();
+
 		if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
-	
+
 			//riceve comandi dal server
 			do {
 				/* Tento di ricevere i dati dal server  */
@@ -213,7 +313,7 @@ int main(int argc, char* argv[]){
 				strcpy(my_neighbors.right_neighbor_ip, third_arg);
 				strcpy(my_neighbors.right_neighbor_port, fourth_arg);
 				
-				printf("My neighbors:\n\tleft:  {%s, %s}\n\tright: {%s, %s}\n", 
+				printf("My neighbors:\n\tleft:  { %s, %s }\n\tright: { %s, %s }\n", 
 					   my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port, 
 					   my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);		
 			}
@@ -223,7 +323,6 @@ int main(int argc, char* argv[]){
 				closing_actions();
 				exit(0);
 			}
-
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -232,8 +331,6 @@ int main(int argc, char* argv[]){
 			scanf("%*c");
 			
 			parse_string(buffer);
-		
-
 
 			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 1)){
 				printf("Errore: peer già registato presso il DS\n");
@@ -311,21 +408,16 @@ int main(int argc, char* argv[]){
 								closing_actions();
 								exit(0);
 							}
-
 						}
 					}
 				}
-			
-//printf("INFO BOOT INVIATE\n");
 
 				printf("Recupero informazioni da file\n");
-
-				strcpy(filepath, "./");
-				strcat(filepath, peer_port);
-				strcat(filepath, "/");
-				strcat(filepath, filename);
 				
+				createRegisterName();
+
 				fd = fopen(filepath, "r+");
+				
 				if(fd == NULL) {	//se non esiste lo creo
 					fd = fopen(filepath, "w");
 					if(fd == NULL)
@@ -336,32 +428,34 @@ int main(int argc, char* argv[]){
 					}
 				}
 				printf("Attendo risposta dal DS...\n");
-
 			}
+
 /*
 			if((strcmp(command, "add") == 0) && (valid_input == 1)) {	
 				
 			}
 
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {	
-
+				
 			}
 */	
+
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 			
-				do {
-					//invio 
-					sprintf(buffer, "QUIT %s %s", localhost, peer_port);
-					len = strlen(buffer)+1;
-					printf("Comunicazione di terminazione al DS: %s\n", buffer);
-					// Tento di inviare le informazioni di boot continuamente        
-					ret = sendto(sd, buffer, len, 0,
-									(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-					// Se la richiesta non e' stata inviata vado a dormire per un poco
-					if (ret < 0)
-								sleep(POLLING_TIME);
-				} while (ret < 0);
-
+				if(peer_connected) {
+					do {
+						//invio 
+						sprintf(buffer, "QUIT %s %s", localhost, peer_port);
+						len = strlen(buffer)+1;
+						printf("Comunicazione di terminazione al DS: %s\n", buffer);
+						// Tento di inviare le informazioni di boot continuamente        
+						ret = sendto(sd, buffer, len, 0,
+										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+						// Se la richiesta non e' stata inviata vado a dormire per un poco
+						if (ret < 0)
+									sleep(POLLING_TIME);
+					} while (ret < 0);
+				}
 
 				printf("Terminazione forzata\n");
 				closing_actions();

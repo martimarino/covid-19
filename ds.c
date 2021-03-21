@@ -517,13 +517,18 @@ int main(int argc, char* argv[]) {
 						if((strcmp(peer_registered[i].port, first_arg)) == 0) {	//cerco il peer
 							printf("Peer: %s\t", peer_registered[i].port);
 							printf("Neighbors: ");
+							if(num_peer == 1)
+								printf("- - , - - \n");
 							if(num_peer == 2) {
 								if(i == 0) {
+									printf(" - - , ");
 									printf("%s ", peer_registered[1].ip);
 									printf("%s \n", peer_registered[1].port);
 								} else if (i == 1){
+									
 									printf("%s ", peer_registered[0].ip);
-									printf("%s \n", peer_registered[0].port);
+									printf("%s, ", peer_registered[0].port);
+									printf("- -\n");
 								}
 							} 
 							else if(num_peer > 2) {
