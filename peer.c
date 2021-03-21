@@ -11,7 +11,6 @@
 #include <time.h>
 #include <poll.h>
 #include <errno.h>
-#include <sys/timerfd.h>
 #include "shared.h"
 
 #define POLLING_TIME  5
@@ -72,15 +71,13 @@ struct tm *todayDateTime, *tomorrowDateTime, *tmpDate;
 char timeToCheck[6];
 int monthDays, day, month, year;
 char dd[3], mm[3], YY[5];
-/*
-//variabili per il timer
-int tfd;
-char dummybuf[8];
-struct itimerspec spec;
-*/
+
+struct timeval *timeout;
+
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
+	free(timeout);
 
 	if(peer_connected == 1) {
 		close(sd);
@@ -169,6 +166,22 @@ void updateFile() {	//salva dati odierni su file
 			my_entry.nuoviCasi, my_entry.tamponi);
 }
 
+void communicateToDS() {
+	do {
+		//copio la struct nel buffer da inviare
+		sprintf(buffer, "DONE %i %i", my_entry.nuoviCasi, my_entry.tamponi);
+		len = strlen(buffer)+1;
+		printf("Dati odierni inviati al DS: %s\n", buffer);
+		// Tento di inviare le informazioni di boot continuamente        
+		ret = sendto(sd, buffer, len, 0,
+						(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+		// Se la richiesta non e' stata inviata vado a dormire per un poco
+		if (ret < 0)
+			sleep(POLLING_TIME);
+		
+	} while (ret < 0);
+}
+
 int daysInAMonth(int m) {
 	if(m >= 1 && m <= 12) {
 		if(m == 2)
@@ -209,12 +222,6 @@ void createRegisterName() {
 	todayDateTime = localtime(&now);
 	strftime(filename, sizeof(filename), "%F", todayDateTime);
 	
-	if(inTime() == 0)
-	{
-		tomorrowDateTime = nextDay(todayDateTime); 
-		strftime(filename, sizeof(filename), "%F", tomorrowDateTime);
-	}
-	
 	printf("FILENAME: %s\n", filename);
 
 	strcpy(filepath, "./");
@@ -223,29 +230,31 @@ void createRegisterName() {
 	strcat(filepath, filename);
 }
 
-int inTime() {
+void checkTime() {	//controlla se bisogna chiudere il file
+	
 	time(&now);
 	todayDateTime = localtime(&now);
 	strftime(timeToCheck, sizeof(filename), "%R", todayDateTime);
 
-	if(strcmp(timeToCheck, "18:00\0") < 0) {//return 0;
-		return 1;
-	} else {  //return 1;
-		return 0;
-	}
-}
-
-void checkTime() {	//controlla se bisogna chiudere il file
-
-	time(&now);
-	todayDateTime = localtime(&now);
-	if(inTime() == 0) {
+	if(strcmp(timeToCheck, "18:00\0") == 0) {
 		printf("Time's over: %s\n", timeToCheck);
 		fclose(fd);
 		//salvataggio su file
 		updateFile();
+		if(my_entry.nuoviCasi > 0 || my_entry.tamponi > 0)
+			communicateToDS();
 		printf("Registro della data odierno chiuso\n");
-		createRegisterName();
+		
+		tomorrowDateTime = nextDay(todayDateTime); 
+		strftime(filename, sizeof(filename), "%F", tomorrowDateTime);
+
+		printf("FILENAME: %s\n", filename);
+
+		strcpy(filepath, "./");
+		strcat(filepath, peer_port);
+		strcat(filepath, "/");
+		strcat(filepath, filename);
+		
 		strcpy(my_entry.date, filename);	//aggiorna data
 		//apre file giorno successivo
 		fd = fopen(filepath, "w");
@@ -297,8 +306,13 @@ int main(int argc, char* argv[]){
 		FD_SET(0, &master);			//aggiunge stdin a master
 		FD_SET(sd, &master);		//aggiunge sd a master
 
+		//permette di controllare ogni minuto se sono le 18:00
+		timeout = malloc(sizeof(timeout));
+		timeout->tv_sec = 60;
+		timeout->tv_usec = 0;
+
 		read_fds = master;  
-		select(fdmax+1, &read_fds, NULL, NULL, NULL);	
+		select(fdmax+1, &read_fds, NULL, NULL, timeout);	
 		// select ritorna quando un descrittore è pronto
 
 		if(peer_connected == 1)
@@ -331,6 +345,10 @@ int main(int argc, char* argv[]){
 				printf("My neighbors:\n\tleft:  { %s, %s }\n\tright: { %s, %s }\n", 
 					   my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port, 
 					   my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);		
+			}
+
+			if(strcmp(command, "ACK") == 0) {
+				printf("Dati odierni correttamente inviati");
 			}
 
 			if(strcmp(command, "ESC") == 0) {
@@ -457,11 +475,16 @@ int main(int argc, char* argv[]){
 				printf("STRUTTURA:\ndata: %s\ntamponi: %i\nnuovi casi: %i\n",
 					my_entry.date, my_entry.tamponi, my_entry.nuoviCasi);
 			}	
-/*
+
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {	
-				
+				if(strcmp(first_arg, "totale") == 0) {
+
+				}
+				if(strcmp(first_arg, "variazione") == 0) {
+
+				}
 			}
-*/	
+	
 
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 			
