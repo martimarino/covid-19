@@ -27,6 +27,7 @@ int howmany;				//per comandi con campi opzionale
 char command[CMD_LEN];	
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
+char third_arg[BUFFER_LEN];
 
 //variabili per la select
 fd_set master;					//set di tutti i descrittori
@@ -56,6 +57,8 @@ struct Entry {
 	int num_peer_N;;
 	int num_peer_T;
 } DS_entry;
+
+struct Entry findEntry;
 time_t now;
 struct tm *todayDateTime;
 FILE* fd;
@@ -63,6 +66,9 @@ char filepath[BUFFER_LEN];
 char DS_file[] = "DS_register.txt";
 int counter = 0;
 
+//variabili per GET
+struct tm dateToConvert;
+time_t min_date_given, max_date_given, date_tmp;
 
 void closing_actions() {	//azioni da compiere quando DS termina
 	
@@ -105,7 +111,7 @@ void updateRegister() {
 	time(&now);
 	todayDateTime = localtime(&now);
 	strftime(DS_entry.date, sizeof(DS_entry.date), "%d:%m:%Y", todayDateTime);
-//printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
+printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
 	fprintf(fd, "%s %i %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
 }
 
@@ -124,6 +130,9 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 				break;
 			case 2:
 				sscanf(token, "%s", &second_arg);
+				break;
+			case 3:
+				sscanf(token, "%s", &third_arg);
 				break;
 			default:
 				printf("Comando non riconosciuto\n");
@@ -487,14 +496,103 @@ int main(int argc, char* argv[]) {
 			}
 
 			if(strcmp(command, "SOME_ENTRIES") == 0) {
-				if(counter == num_peer){
+			
+				DS_entry.num_peer_N += atoi(first_arg);
+				DS_entry.num_peer_T += atoi(second_arg);
+				counter++;
+
+				if(counter == num_peer) {
 					counter = 0;
 					updateRegister();
-				} else {
-					DS_entry.num_peer_N += atoi(first_arg);
-					DS_entry.num_peer_T += atoi(second_arg);
-					counter++;
 				}
+			}
+
+			if(strcmp(command, "GET") == 0) {
+			
+				//conversione date da cercare
+				if(strcmp(second_arg, "*" != 0)) {
+					strptime(second_arg, "%d:%m:%Y", &dateToConvert);
+					min_date_given = mktime(&dateToConvert);
+				}
+				if(strcmp(third_arg, "*" != 0)) {
+					strptime(third_arg, "%d:%m:%Y", &dateToConvert);
+					max_date_given = mktime(&dateToConvert);
+				}
+
+				fclose(fd);
+				fd = fopen(filepath, "r");	//apro il file in lettura
+				if(fd != NULL) {	
+					sprintf(buffer, "RESPONSE ");
+					//caso *,*
+					if((strcmp(second_arg, "*" == 0)) && (strcmp(third_arg, "*" == 0))) {
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, 
+							&findEntry.num_peer_N, &findEntry.num_peer_T) != EOF)
+							
+							sprintf(buffer + strlen(buffer), "%s %i %i ", 
+									findEntry.date, findEntry.num_peer_N, findEntry.num_peer_T);
+					}	
+
+					//caso d:m:Y - *
+					if(strcmp(third_arg, "*" == 0)) {
+
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
+									&findEntry.num_peer_T) != EOF) {
+							
+							//conversione data prelevata
+							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							date_tmp = mktime(&dateToConvert);
+							
+							if(difftime(min_date_given, date_tmp) >= 0) {
+								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+										findEntry.num_peer_N, findEntry.num_peer_T);
+							}
+						}
+					}
+
+					//caso * - d:m:Y
+					if(strcmp(second_arg, "*" == 0)) {
+
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
+									&findEntry.num_peer_T) != EOF) {
+							
+							//conversione data prelevata
+							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							date_tmp = mktime(&dateToConvert);
+							if(difftime(max_date_given, date_tmp) <= 0) {
+
+								if(difftime(max_date_given, date_tmp) > 0)
+									break;
+
+								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+										findEntry.num_peer_N, findEntry.num_peer_T);
+							}
+						}
+					}
+
+					//caso d:m:Y - d:m:Y
+					if((strcmp(second_arg, "*" != 0)) && (strcmp(third_arg, "*" != 0))) {
+
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
+									&findEntry.num_peer_T) != EOF) {
+							
+							//conversione data prelevata
+							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							date_tmp = mktime(&dateToConvert);
+							if((difftime(min_date_given, date_tmp) >= 0) && 
+							(difftime(max_date_given, date_tmp) <= 0)) {
+
+								if(difftime(max_date_given, date_tmp) > 0)
+									break;
+
+								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+										findEntry.num_peer_N, findEntry.num_peer_T);
+							}
+						}
+					}
+					
+					fclose(fd);
+				}
+
 			}
 
 		} //fine FD_ISSET

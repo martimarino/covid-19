@@ -71,7 +71,7 @@ struct Totale {
 	char *str;
 	int nuoviCasi;
 	int tamponi;
-} tot;
+} tot, tmp_tot;
 
 struct Entry {
 	char type[2];
@@ -199,14 +199,17 @@ int parse_period(char buffer[]) {	//separa le date del periodo
 	strptime(r_date, "%d:%m:%Y", &dateToConvert);
 	recent_date = mktime(&dateToConvert);
 
-	//controllo del formato
-	if(difftime(recent_date, past_date) <= 0) {
+	if(strcmp(p_date, "*") == 0 || (strcmp(r_date, "*") == 0))
+		return 1;
+
+	//controllo validità periodo
+	if((difftime(recent_date, past_date) <= 0) || 
+		(difftime(recent_date, now) > 0) ||
+		(difftime(recent_date, past_date) == 0)) {
 		printf("Periodo non valido\n");
-		valid_period = 0;
-	} else {
-		valid_period = 1;
-	}
-	return valid_period;
+		return 0;
+	} else 
+		return 1;
 }
 
 void recoverPreviousData() {
@@ -214,7 +217,7 @@ void recoverPreviousData() {
 	fd = fopen(filepath, "r");	//apro il file in lettura
 	if(fd != NULL) {		//se esisteva fopen ha successo
 		while(fscanf(fd, "%s %i\n", &my_entry.type, &my_entry.quantity) != EOF) {
-			printf("RECOVERED: %s %i\n", my_entry.type, my_entry.quantity);
+//printf("RECOVERED: %s %i\n", my_entry.type, my_entry.quantity);
 			if(strcmp(my_entry.type, "N") == 0)
 				tot.nuoviCasi += my_entry.quantity;
 			if(strcmp(my_entry.type, "T") == 0)
@@ -228,13 +231,13 @@ void updateFile() {	//salva dati odierni su file
 	if(atoi(second_arg) == 0)
 		printf("La quantità deve essere un intero\n");
 	else{
-		fprintf(fd, "%s, %i\n", first_arg, atoi(second_arg));
+		fprintf(fd, "%s %i\n", first_arg, atoi(second_arg));
 	}
 }
 
 void writeTotal() {
 	tot.str = "TOTALE";
-	fprintf(fd, "%s %i %i\n", tot.str, tot.nuoviCasi, tot.tamponi);
+	fprintf(fd, "%s %i %i //nuovi casi, tamponi\n", tot.str, tot.nuoviCasi, tot.tamponi);
 	printf("Registro giornaliero chiuso\n");
 }
 
@@ -252,6 +255,9 @@ void communicateToDS() {
 			sleep(POLLING_TIME);
 		
 	} while (ret < 0);
+
+	tot.nuoviCasi = 0;
+	tot.tamponi = 0;
 }
 
 int daysInAMonth(int m) {
@@ -336,6 +342,21 @@ void checkTime() {	//controlla se bisogna chiudere il file
 	}
 }
 
+void receive_() {
+	//riceve comandi dal server
+	do {
+		/* Tento di ricevere i dati dal server  */
+		ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
+						(struct sockaddr*)&srv_addr, &len);
+
+		/* Se non ricevo niente vado a dormire per un poco */
+		if (ret < 0)
+			sleep(POLLING_TIME);
+
+	} while(ret < 0);
+	printf("Ricevuto: %s\n", buffer);
+}
+
 int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
@@ -389,18 +410,7 @@ int main(int argc, char* argv[]){
 
 		if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
 
-			//riceve comandi dal server
-			do {
-				/* Tento di ricevere i dati dal server  */
-				ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
-								(struct sockaddr*)&srv_addr, &len);
-
-				/* Se non ricevo niente vado a dormire per un poco */
-				if (ret < 0)
-					sleep(POLLING_TIME);
-
-			} while(ret < 0);
-			printf("Ricevuto: %s\n", buffer);
+			receive_();
 
 			howmany = parse_string(buffer);
 
@@ -472,18 +482,8 @@ int main(int argc, char* argv[]){
 
 					if(ready) {
 						if(pfds[1].revents) {	// riceve qualcosa da DS
-							do {
-								/* Tento di ricevere i dati dal server  */
-								ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
-												(struct sockaddr*)&srv_addr, &len);
-
-								/* Se non ricevo niente vado a dormire per un poco */
-								if (ret < 0)
-									sleep(POLLING_TIME);
-
-							} while(ret < 0);
-							printf("Ho ricevuto: %s\n", buffer);
-
+							
+							receive_();
 							parse_string(buffer);
 
 							if(strcmp(command, "ACK") == 0) {
@@ -522,8 +522,6 @@ int main(int argc, char* argv[]){
 					perror("Error: ");
 				else 
 					printf("File open\n");
-
-				
 			}
 
 
@@ -546,7 +544,6 @@ int main(int argc, char* argv[]){
 				}
 			}	
 
-
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {
 				valid_period = parse_period(third_arg);
 				if((strcmp(first_arg, "totale") != 0 && strcmp(first_arg, "variazione") != 0) ||
@@ -559,9 +556,9 @@ int main(int argc, char* argv[]){
 				} else {
 					do {
 						//invio 
-						sprintf(buffer, "REQ %s %s %s", second_arg, p_date, r_date);
+						sprintf(buffer, "GET %s %s %s", second_arg, p_date, r_date);
 						len = strlen(buffer)+1;
-						printf("Richiesta di ulteriori dati al DS: %s\n", buffer);       
+						printf("Richiesta entry al DS: %s\n", buffer);       
 						ret = sendto(sd, buffer, len, 0,
 										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
 						// Se la richiesta non e' stata inviata vado a dormire per un poco
@@ -569,11 +566,31 @@ int main(int argc, char* argv[]){
 							sleep(POLLING_TIME);
 					} while (ret < 0);
 
-					if(strcmp(first_arg, "totale") == 0) {
+					receive_();
+					parse_string(buffer);
+
+					//prelevo dati locali
+					fopen();
+
+					//controllo sui dati ricevuti
+
+					//nessun altro ha dati per quel periodo
+					if() {
+						//calcolo il dato
+
+						//memorizzo il dato
+
+						//(cache)
+
+					} else {	//flooding
 
 					}
-					if(strcmp(first_arg, "variazione") == 0) {
 
+					if(strcmp(first_arg, "totale") == 0) {
+						
+					}
+					if(strcmp(first_arg, "variazione") == 0) {
+						
 					}
 				}
 			}
