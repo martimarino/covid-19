@@ -73,6 +73,11 @@ struct Totale {
 	int tamponi;
 } tot;
 
+struct Entry {
+	char type[2];
+	int quantity;
+} my_entry;
+
 //variabili per la creazione della data odierna/del giorno successivo
 time_t now;
 struct tm *todayDateTime, *tomorrowDateTime, *tmpDate;
@@ -202,6 +207,21 @@ int parse_period(char buffer[]) {	//separa le date del periodo
 		valid_period = 1;
 	}
 	return valid_period;
+}
+
+void recoverPreviousData() {
+
+	fd = fopen(filepath, "r");	//apro il file in lettura
+	if(fd != NULL) {		//se esisteva fopen ha successo
+		while(fscanf(fd, "%s %i\n", &my_entry.type, &my_entry.quantity) != EOF) {
+			printf("RECOVERED: %s %i\n", my_entry.type, my_entry.quantity);
+			if(strcmp(my_entry.type, "N") == 0)
+				tot.nuoviCasi += my_entry.quantity;
+			if(strcmp(my_entry.type, "T") == 0)
+				tot.tamponi += my_entry.quantity;
+		}
+		fclose(fd);
+	}
 }
 
 void updateFile() {	//salva dati odierni su file
@@ -495,12 +515,15 @@ int main(int argc, char* argv[]){
 				}
 				
 				createRegisterName();
+				recoverPreviousData();
 
 				fd = fopen(filepath, "a");
 				if(fd == NULL)
 					perror("Error: ");
 				else 
 					printf("File open\n");
+
+				
 			}
 
 
@@ -516,7 +539,7 @@ int main(int argc, char* argv[]){
 					if (strcmp(first_arg, "T") == 0) {
 						tot.tamponi = tot.tamponi+atoi(second_arg);
 					}
-					printf("TOTALE:tamponi: %i\nnuovi casi: %i\n",
+					printf("TOTALE: tamponi: %i nuovi casi: %i\n",
 						tot.tamponi, tot.nuoviCasi);
 					//salvataggio su file
 					updateFile();
