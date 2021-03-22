@@ -36,6 +36,12 @@ char second_arg[BUFFER_LEN];
 char third_arg[BUFFER_LEN];
 char fourth_arg[BUFFER_LEN];
 
+//variabili perprelevare i campi del periodo
+int valid_period = 1;
+char p_date[11], r_date[11];
+struct tm dateToConvert;
+time_t past_date, recent_date;
+
 struct sockaddr_in srv_addr, my_addr;
 char buffer[BUFFER_LEN];
 
@@ -43,6 +49,7 @@ char buffer[BUFFER_LEN];
 fd_set master;		//set di tutti i descrittori
 fd_set read_fds;	//set dei descrittori in lettura
 int fdmax = 0;
+struct timeval *timeout;
 
 //variabili per il file del peer
 FILE* fd;
@@ -60,19 +67,20 @@ struct Neighbors {
 	char right_neighbor_port[PORT_LEN];
 } my_neighbors;
 
-struct Entry {
-	char date[11];
+struct Totale {
+	char *str;
 	int nuoviCasi;
 	int tamponi;
-} my_entry;
+} tot;
 
+//variabili per la creazione della data odierna/del giorno successivo
 time_t now;
 struct tm *todayDateTime, *tomorrowDateTime, *tmpDate;
 char timeToCheck[6];
 int monthDays, day, month, year;
 char dd[3], mm[3], YY[5];
 
-struct timeval *timeout;
+
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
@@ -81,6 +89,7 @@ void closing_actions() {	//azioni da compiere quando un peer termina
 
 	if(peer_connected == 1) {
 		close(sd);
+		fclose(fd);
 		printf("Chiusura del socket effettuata\n");
 	}
 	FD_CLR(0, &master);
@@ -157,24 +166,67 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	} else {
 		valid_input = 1;
 	}
-
 	return i;
 }
 
+int parse_period(char buffer[]) {	//separa le date del periodo
+
+	token = strtok(buffer, "-");
+
+	for(i = 0; token != NULL; i++) {
+		
+		switch(i) {
+			case 0:
+				sscanf(token, "%s", &p_date);
+				break;
+			case 1:
+				sscanf(token, "%s", &r_date);
+				break;
+			default:
+				printf("Troppe date inserite\n");
+				break;
+		}
+		token = strtok(NULL, " ");
+	}
+
+	strptime(p_date, "%d:%m:%Y", &dateToConvert);
+	past_date = mktime(&dateToConvert);
+	strptime(r_date, "%d:%m:%Y", &dateToConvert);
+	recent_date = mktime(&dateToConvert);
+
+	//controllo del formato
+	if(difftime(recent_date, past_date) <= 0) {
+		printf("Periodo non valido\n");
+		valid_period = 0;
+	} else {
+		valid_period = 1;
+	}
+	return valid_period;
+}
+
 void updateFile() {	//salva dati odierni su file
-	fprintf(fd, "%s, %i, %i", my_entry.date, 
-			my_entry.nuoviCasi, my_entry.tamponi);
+	if(atoi(second_arg) == 0)
+		printf("La quantità deve essere un intero\n");
+	else{
+		fprintf(fd, "%s, %i\n", first_arg, atoi(second_arg));
+	}
+}
+
+void writeTotal() {
+	tot.str = "TOTALE";
+	fprintf(fd, "%s %i %i\n", tot.str, tot.nuoviCasi, tot.tamponi);
+	printf("Registro giornaliero chiuso\n");
 }
 
 void communicateToDS() {
 	do {
 		//copio la struct nel buffer da inviare
-		sprintf(buffer, "DONE %i %i", my_entry.nuoviCasi, my_entry.tamponi);
+		sprintf(buffer, "SOME_ENTRIES %i %i", (tot.nuoviCasi>0)?1:0, (tot.tamponi>0)?1:0);
 		len = strlen(buffer)+1;
-		printf("Dati odierni inviati al DS: %s\n", buffer);
+		printf("Comunicazione possesso dati al DS: %s\n", buffer);
 		// Tento di inviare le informazioni di boot continuamente        
 		ret = sendto(sd, buffer, len, 0,
-						(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+					(struct sockaddr*)&srv_addr, sizeof(srv_addr));
 		// Se la richiesta non e' stata inviata vado a dormire per un poco
 		if (ret < 0)
 			sleep(POLLING_TIME);
@@ -238,10 +290,9 @@ void checkTime() {	//controlla se bisogna chiudere il file
 
 	if(strcmp(timeToCheck, "18:00\0") == 0) {
 		printf("Time's over: %s\n", timeToCheck);
+		writeTotal();
 		fclose(fd);
-		//salvataggio su file
-		updateFile();
-		if(my_entry.nuoviCasi > 0 || my_entry.tamponi > 0)
+		if(tot.nuoviCasi > 0 || tot.tamponi > 0)
 			communicateToDS();
 		printf("Registro della data odierno chiuso\n");
 		
@@ -255,9 +306,8 @@ void checkTime() {	//controlla se bisogna chiudere il file
 		strcat(filepath, "/");
 		strcat(filepath, filename);
 		
-		strcpy(my_entry.date, filename);	//aggiorna data
 		//apre file giorno successivo
-		fd = fopen(filepath, "w");
+		fd = fopen(filepath, "a");
 		if(fd == NULL)
 			perror("Error: ");
 	}
@@ -295,7 +345,6 @@ int main(int argc, char* argv[]){
 	}
 
 	createRegisterName();
-	strcpy(my_entry.date, filename);
 
 	while(1) {
 
@@ -444,48 +493,68 @@ int main(int argc, char* argv[]){
 						}
 					}
 				}
-
-				printf("Recupero informazioni da file\n");
 				
 				createRegisterName();
 
-				fd = fopen(filepath, "r+");
-				
-				if(fd == NULL) {	//se non esiste lo creo
-					fd = fopen(filepath, "w");
-					if(fd == NULL)
-						perror("Error: ");
-					else {
-						fclose(fd);		//lo riapro in r/w
-						fd = fopen(filepath, "r+");
-					}
-				}
-				printf("Attendo risposta dal DS...\n");
+				fd = fopen(filepath, "a");
+				if(fd == NULL)
+					perror("Error: ");
+				else 
+					printf("File open\n");
 			}
 
 
-			if((strcmp(command, "add") == 0) && (valid_input == 1)) {	
-				if(strcmp(first_arg, "N") == 0) {
-					my_entry.nuoviCasi = my_entry.nuoviCasi+atoi(second_arg);
-				} else if (strcmp(first_arg, "T") == 0) {
-					my_entry.tamponi = my_entry.tamponi+atoi(second_arg);
-				} else {
-					printf("Errore: type può essere N o T\n");
+			if((strcmp(command, "add") == 0) && (valid_input == 1)) {
+				if(peer_connected == 0)
+					printf("Errore: peer non connesso al DS\n");
+				else if((strcmp(first_arg, "N") != 0) && (strcmp(first_arg, "T") != 0))
+					printf("Formato invalido, digitare: add [N|T] quantità\n");
+				else {				
+					if(strcmp(first_arg, "N") == 0) {
+						tot.nuoviCasi = tot.nuoviCasi+atoi(second_arg);
+					}
+					if (strcmp(first_arg, "T") == 0) {
+						tot.tamponi = tot.tamponi+atoi(second_arg);
+					}
+					printf("TOTALE:tamponi: %i\nnuovi casi: %i\n",
+						tot.tamponi, tot.nuoviCasi);
+					//salvataggio su file
+					updateFile();
 				}
-				printf("STRUTTURA:\ndata: %s\ntamponi: %i\nnuovi casi: %i\n",
-					my_entry.date, my_entry.tamponi, my_entry.nuoviCasi);
 			}	
 
-			if((strcmp(command, "get") == 0) && (valid_input == 1)) {	
-				if(strcmp(first_arg, "totale") == 0) {
 
-				}
-				if(strcmp(first_arg, "variazione") == 0) {
+			if((strcmp(command, "get") == 0) && (valid_input == 1)) {
+				valid_period = parse_period(third_arg);
+				if((strcmp(first_arg, "totale") != 0 && strcmp(first_arg, "variazione") != 0) ||
+				    (strcmp(second_arg, "N") != 0) && (strcmp(second_arg, "T") != 0) ||
+					(valid_period == 0)) {
+					
+					printf("Formato invalido, digitare: ");
+					printf("get [totale|variazione] [N|T] dd1:mm1:yyyy1-dd2:mm2:yyyy2\n");
 
+				} else {
+					do {
+						//invio 
+						sprintf(buffer, "REQ %s %s %s", second_arg, p_date, r_date);
+						len = strlen(buffer)+1;
+						printf("Richiesta di ulteriori dati al DS: %s\n", buffer);       
+						ret = sendto(sd, buffer, len, 0,
+										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
+						// Se la richiesta non e' stata inviata vado a dormire per un poco
+						if (ret < 0)
+							sleep(POLLING_TIME);
+					} while (ret < 0);
+
+					if(strcmp(first_arg, "totale") == 0) {
+
+					}
+					if(strcmp(first_arg, "variazione") == 0) {
+
+					}
 				}
 			}
 	
-
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 			
 				if(peer_connected) {
@@ -499,7 +568,7 @@ int main(int argc, char* argv[]){
 										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
 						// Se la richiesta non e' stata inviata vado a dormire per un poco
 						if (ret < 0)
-									sleep(POLLING_TIME);
+							sleep(POLLING_TIME);
 					} while (ret < 0);
 				}
 

@@ -39,10 +39,6 @@ int num_peer = 0;   							//numero peer registrati
 
 char buffer[BUFFER_LEN];
 
-time_t rawtime;
-
-char DS_file[] = "DS_register.txt";
-
 struct Peer {
 	char ip[ADDR_LEN];
 	char port[PORT_LEN];
@@ -55,6 +51,19 @@ char left_port[PORT_LEN];
 char right_ip[ADDR_LEN];
 char right_port[PORT_LEN];
 
+struct Entry {
+	char date[11];
+	int num_peer_N;;
+	int num_peer_T;
+} DS_entry;
+time_t now;
+struct tm *todayDateTime;
+FILE* fd;
+char filepath[BUFFER_LEN];
+char DS_file[] = "DS_register.txt";
+int counter = 0;
+
+
 void closing_actions() {	//azioni da compiere quando DS termina
 	
 	close(sd);
@@ -65,6 +74,8 @@ void closing_actions() {	//azioni da compiere quando DS termina
 
 	free(tmp_port);
 	free(token);
+
+	fclose(fd);
 
 }
 
@@ -88,6 +99,14 @@ void ds_connect() {		//creazione socket
 
 	fdmax = sd;
 	printf("Socket creato: DS in ascolto...\n");
+}
+
+void updateRegister() {
+	time(&now);
+	todayDateTime = localtime(&now);
+	strftime(DS_entry.date, sizeof(DS_entry.date), "%d:%m:%Y", todayDateTime);
+//printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
+	fprintf(fd, "%s %i %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
 }
 
 int parse_string(char buffer[]) {	//separa gli argomenti di un comando
@@ -129,13 +148,22 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 }
 
 void sendToPeer(struct sockaddr_in addr) {
-		len = strlen(buffer) + 1;
-		do {
-			ret = sendto(sd, buffer, len, 0,
-					(struct sockaddr*)&addr, sizeof(addr));
-			if(ret < 0)
-				sleep(POLLING_TIME);
-		} while (ret < 0);
+	len = strlen(buffer) + 1;
+	do {
+		ret = sendto(sd, buffer, len, 0,
+				(struct sockaddr*)&addr, sizeof(addr));
+		if(ret < 0)
+			sleep(POLLING_TIME);
+	} while (ret < 0);
+}
+
+void initDSfile() {
+	//apertura file
+	strcpy(filepath, "./");
+	strcat(filepath, DS_file);
+	fd = fopen(filepath, "a");
+	if(fd == NULL)
+		perror("Error: ");
 }
 
 int main(int argc, char* argv[]) {
@@ -165,6 +193,8 @@ int main(int argc, char* argv[]) {
 		strcpy(tmp_port, argv[argc-1]);
 		strcpy(ds_port, tmp_port);		
 	}
+
+	initDSfile();
 
     printf("******************* DS COVID STARTED *******************\n");
 	ds_connect();
@@ -453,6 +483,17 @@ int main(int argc, char* argv[]) {
 							
 						}
 					}
+				}
+			}
+
+			if(strcmp(command, "SOME_ENTRIES") == 0) {
+				if(counter == num_peer){
+					counter = 0;
+					updateRegister();
+				} else {
+					DS_entry.num_peer_N += atoi(first_arg);
+					DS_entry.num_peer_T += atoi(second_arg);
+					counter++;
 				}
 			}
 
