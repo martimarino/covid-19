@@ -510,11 +510,11 @@ int main(int argc, char* argv[]) {
 			if(strcmp(command, "GET") == 0) {
 			
 				//conversione date da cercare
-				if(strcmp(second_arg, "*" != 0)) {
+				if(strcmp(second_arg, "*") != 0) {
 					strptime(second_arg, "%d:%m:%Y", &dateToConvert);
 					min_date_given = mktime(&dateToConvert);
 				}
-				if(strcmp(third_arg, "*" != 0)) {
+				if(strcmp(third_arg, "*") != 0) {
 					strptime(third_arg, "%d:%m:%Y", &dateToConvert);
 					max_date_given = mktime(&dateToConvert);
 				}
@@ -522,18 +522,19 @@ int main(int argc, char* argv[]) {
 				fclose(fd);
 				fd = fopen(filepath, "r");	//apro il file in lettura
 				if(fd != NULL) {	
-					sprintf(buffer, "RESPONSE ");
+					sprintf(buffer, "RESPONSE");
+
 					//caso *,*
-					if((strcmp(second_arg, "*" == 0)) && (strcmp(third_arg, "*" == 0))) {
+					if((strcmp(second_arg, "*") == 0) && (strcmp(third_arg, "*") == 0)) {
 						while(fscanf(fd, "%s %i %i\n", &findEntry.date, 
 							&findEntry.num_peer_N, &findEntry.num_peer_T) != EOF)
 							
-							sprintf(buffer + strlen(buffer), "%s %i %i ", 
+							sprintf(buffer + strlen(buffer), "-%s %i %i", 
 									findEntry.date, findEntry.num_peer_N, findEntry.num_peer_T);
 					}	
 
 					//caso d:m:Y - *
-					if(strcmp(third_arg, "*" == 0)) {
+					if(strcmp(third_arg, "*") == 0) {
 
 						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
 									&findEntry.num_peer_T) != EOF) {
@@ -541,60 +542,53 @@ int main(int argc, char* argv[]) {
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert);
-							
-							if(difftime(min_date_given, date_tmp) >= 0) {
-								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+
+							if(difftime(min_date_given, date_tmp) <= 0) {
+								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
 										findEntry.num_peer_N, findEntry.num_peer_T);
 							}
 						}
 					}
 
 					//caso * - d:m:Y
-					if(strcmp(second_arg, "*" == 0)) {
-
+					if(strcmp(second_arg, "*") == 0) {
 						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
 									&findEntry.num_peer_T) != EOF) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert);
-							if(difftime(max_date_given, date_tmp) <= 0) {
-
-								if(difftime(max_date_given, date_tmp) > 0)
-									break;
-
-								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+							if(difftime(max_date_given, date_tmp) >= 0) 
+							{
+								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
 										findEntry.num_peer_N, findEntry.num_peer_T);
 							}
 						}
 					}
 
 					//caso d:m:Y - d:m:Y
-					if((strcmp(second_arg, "*" != 0)) && (strcmp(third_arg, "*" != 0))) {
-
+					if((strcmp(second_arg, "*") != 0) && (strcmp(third_arg, "*") != 0)) {
+						printf("CASO data - data\n");
 						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
 									&findEntry.num_peer_T) != EOF) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert);
-							if((difftime(min_date_given, date_tmp) >= 0) && 
-							(difftime(max_date_given, date_tmp) <= 0)) {
-
-								if(difftime(max_date_given, date_tmp) > 0)
-									break;
-
-								sprintf(buffer + strlen(buffer), "%s %i %i ", findEntry.date, 
+							if((difftime(min_date_given, date_tmp) <= 0) && 
+							(difftime(max_date_given, date_tmp) >= 0)) 
+							{
+								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
 										findEntry.num_peer_N, findEntry.num_peer_T);
 							}
 						}
 					}
-					
+					sendToPeer(connecting_addr);
+					printf("Invio: %s\n", buffer);
 					fclose(fd);
+					fopen(filepath, "a");
 				}
-
 			}
-
 		} //fine FD_ISSET
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura

@@ -1,4 +1,3 @@
-
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -36,9 +35,15 @@ char second_arg[BUFFER_LEN];
 char third_arg[BUFFER_LEN];
 char fourth_arg[BUFFER_LEN];
 
-//variabili perprelevare i campi del periodo
+//variabili per prelevare i campi del periodo
 int valid_period = 1;
-char p_date[11], r_date[11];
+struct Aggr {
+	char aggr[11];
+	char type[2];
+	char p_date[11];
+	char r_date[11];
+} elab;
+
 struct tm dateToConvert;
 time_t past_date, recent_date;
 
@@ -68,10 +73,10 @@ struct Neighbors {
 } my_neighbors;
 
 struct Totale {
-	char *str;
+	char str[11];
 	int nuoviCasi;
 	int tamponi;
-} tot, tmp_tot;
+} tot;
 
 struct Entry {
 	char type[2];
@@ -85,7 +90,18 @@ char timeToCheck[6];
 int monthDays, day, month, year;
 char dd[3], mm[3], YY[5];
 
+//variabili per la ricerca locale
+FILE* fd_tmp;
+char filepath_tmp[BUFFER_LEN];
+char filename_tmp[11];
+struct Totale tot_tmp, DS_info;
+char inizio_pandemia[11];
+time_t minDate, maxDate;
+int flooding;
+struct tm *nextDate;
 
+//variabili flooding
+char buffer_tmp[BUFFER_LEN];
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
@@ -131,6 +147,7 @@ void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
 	printf("Socket creato\n");
 
 }
+
 
 int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
@@ -182,10 +199,10 @@ int parse_period(char buffer[]) {	//separa le date del periodo
 		
 		switch(i) {
 			case 0:
-				sscanf(token, "%s", &p_date);
+				sscanf(token, "%s", &elab.p_date);
 				break;
 			case 1:
-				sscanf(token, "%s", &r_date);
+				sscanf(token, "%s", &elab.r_date);
 				break;
 			default:
 				printf("Troppe date inserite\n");
@@ -194,12 +211,12 @@ int parse_period(char buffer[]) {	//separa le date del periodo
 		token = strtok(NULL, " ");
 	}
 
-	strptime(p_date, "%d:%m:%Y", &dateToConvert);
+	strptime(elab.p_date, "%d:%m:%Y", &dateToConvert);
 	past_date = mktime(&dateToConvert);
-	strptime(r_date, "%d:%m:%Y", &dateToConvert);
+	strptime(elab.r_date, "%d:%m:%Y", &dateToConvert);
 	recent_date = mktime(&dateToConvert);
 
-	if(strcmp(p_date, "*") == 0 || (strcmp(r_date, "*") == 0))
+	if(strcmp(elab.p_date, "*") == 0 || (strcmp(elab.r_date, "*") == 0))
 		return 1;
 
 	//controllo validità periodo
@@ -236,7 +253,7 @@ void updateFile() {	//salva dati odierni su file
 }
 
 void writeTotal() {
-	tot.str = "TOTALE";
+	strcpy(tot.str, "TOTALE");
 	fprintf(fd, "%s %i %i //nuovi casi, tamponi\n", tot.str, tot.nuoviCasi, tot.tamponi);
 	printf("Registro giornaliero chiuso\n");
 }
@@ -298,7 +315,7 @@ void createRegisterName() {
 
 	time(&now);
 	todayDateTime = localtime(&now);
-	strftime(filename, sizeof(filename), "%F", todayDateTime);
+	strftime(filename, sizeof(filename), "%d:%m:%Y", todayDateTime);
 	
 	printf("FILENAME: %s\n", filename);
 
@@ -323,7 +340,7 @@ void checkTime() {	//controlla se bisogna chiudere il file
 		printf("Registro della data odierno chiuso\n");
 		
 		tomorrowDateTime = nextDay(todayDateTime); 
-		strftime(filename, sizeof(filename), "%F", tomorrowDateTime);
+		strftime(filename, sizeof(filename), "%d:%m:%Y", tomorrowDateTime);
 
 		printf("FILENAME: %s\n", filename);
 
@@ -357,6 +374,103 @@ void receive_() {
 	printf("Ricevuto: %s\n", buffer);
 }
 
+void floodingToDo() {
+	flooding = 0;
+	while(difftime(minDate, maxDate) <= 0) {
+		token = strtok(buffer_tmp, "-");	//taglio via RESPONSE-
+		fd_tmp = fopen(filepath_tmp, "r");	
+		if(fd_tmp == NULL) { //non ci sono file con quella data
+		printf("FILE NON PRESENTE\n");
+			//controllo se il server ne ha
+			token = strtok(NULL, "-");
+			while(token != NULL)
+			{
+				sscanf(token, "%s %i %i", &DS_info.str, &DS_info.nuoviCasi, &DS_info.tamponi);
+printf("DS_INFO %s %i %i\n", DS_info.str, DS_info.nuoviCasi, DS_info.tamponi);
+printf("FILENAME %s\n\n", filename_tmp);
+				if(strcmp(filename_tmp, DS_info.str) == 0) { //data nei risultati del DS
+					if((strcmp(elab.type, "N") == 0) && 
+					(DS_info.nuoviCasi > 0))			//qualcuno ha registrato dati quel giorno
+					{ printf("\tCASO N\n");
+						flooding = 1;
+						return;
+					}
+					if((strcmp(elab.type, "T") == 0) && 
+					(DS_info.tamponi > 0))
+					{ printf("\tCASO T\n");
+						flooding = 1;
+						return;
+					}
+				}
+				token = strtok(NULL, "-");
+			}
+		} else {	//il file è presente
+			printf("FILE PRESENTE\n");
+			//leggo il totale dal file
+			while(fscanf(fd_tmp, "%s %i %i ", tot_tmp.str, 
+				tot_tmp.nuoviCasi, tot_tmp.tamponi) != EOF) 
+			{
+				if(strcmp(tot_tmp.str, "TOTALE") == 0) {
+					if( token != NULL) {
+						token = strtok(NULL, "-");
+						while(token != NULL)
+						{
+							sscanf(token, "%s %i %i", DS_info.str, DS_info.nuoviCasi, DS_info.tamponi);
+							if(strcmp(filename_tmp, DS_info.str) == 0) {
+								if((strcmp(elab.type, "N") == 0) && 
+								(DS_info.nuoviCasi > 1))
+								{
+									fclose(fd_tmp);
+									flooding = 1;
+									break;
+								}
+								else
+								{
+									fclose(fd_tmp);
+									flooding = 0;
+									break;
+								}
+							}
+							if(strcmp(filename_tmp, DS_info.str) == 0) {
+								if((strcmp(elab.type, "T") == 0) && 
+								(DS_info.tamponi > 1))
+								{
+									fclose(fd_tmp);
+									flooding = 1;
+									break;
+								}
+								else
+								{
+									fclose(fd_tmp);
+									flooding = 0;
+									break;
+								}
+							}
+							token = strtok(NULL, "-");
+						}
+					}
+				}
+				fclose(fd_tmp);
+			}
+		}
+		
+		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+		nextDate = &dateToConvert;
+		nextDate = nextDay(nextDate);
+		dateToConvert = *nextDate;
+		minDate = mktime(&dateToConvert);
+		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
+		//aggiorno filepath
+		strcpy(filepath_tmp, "./");
+		strcat(filepath_tmp, peer_port);
+		strcat(filepath_tmp, "/");
+		strcat(filepath_tmp, filename_tmp);printf("NUOVO FILENAME %s\n", filename_tmp);
+	
+		//ricopio la lista del DS
+		strcpy(buffer_tmp, buffer);
+	}
+}
+
 int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
@@ -386,6 +500,7 @@ int main(int argc, char* argv[]){
 	}
 
 	createRegisterName();
+	strcpy(inizio_pandemia, "01:03:2020");
 
 	while(1) {
 
@@ -548,15 +663,18 @@ int main(int argc, char* argv[]){
 				valid_period = parse_period(third_arg);
 				if((strcmp(first_arg, "totale") != 0 && strcmp(first_arg, "variazione") != 0) ||
 				    (strcmp(second_arg, "N") != 0) && (strcmp(second_arg, "T") != 0) ||
-					(valid_period == 0)) {
-					
+					(valid_period == 0)) 
+				{					
 					printf("Formato invalido, digitare: ");
 					printf("get [totale|variazione] [N|T] dd1:mm1:yyyy1-dd2:mm2:yyyy2\n");
 
 				} else {
+					//compilo struct Aggr
+					strcpy(elab.aggr, first_arg);
+					strcpy(elab.type, second_arg);
 					do {
 						//invio 
-						sprintf(buffer, "GET %s %s %s", second_arg, p_date, r_date);
+						sprintf(buffer, "GET %s %s %s", elab.type, elab.p_date, elab.r_date);
 						len = strlen(buffer)+1;
 						printf("Richiesta entry al DS: %s\n", buffer);       
 						ret = sendto(sd, buffer, len, 0,
@@ -567,34 +685,107 @@ int main(int argc, char* argv[]){
 					} while (ret < 0);
 
 					receive_();
-					parse_string(buffer);
+					strcpy(buffer_tmp, buffer);
 
-					//prelevo dati locali
-					fopen();
+					if(howmany == 1) {	//il DS non ha dati relativi
+						flooding = 0;
+					} else {
+						//percorso del file da aprire
+						strcpy(filename_tmp, elab.p_date);
+						strcpy(filepath_tmp, "./");
+						strcat(filepath_tmp, peer_port);
+						strcat(filepath_tmp, "/");
 
-					//controllo sui dati ricevuti
+						//caso *,*
+						if((strcmp(second_arg, "*") == 0) && (strcmp(third_arg, "*") == 0)) {
+printf("CASO * - *\n");
+							//nome del file
+							printf("FILE TO OPEN: %s\n", filename_tmp);
+							strcat(filepath_tmp, inizio_pandemia);
+							strcpy(filename_tmp, inizio_pandemia);
 
-					//nessun altro ha dati per quel periodo
-					if() {
-						//calcolo il dato
+							//creo le variabili time_t per il confronto
+							strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+							minDate = mktime(&dateToConvert);
+							maxDate = mktime(todayDateTime);
 
-						//memorizzo il dato
+							floodingToDo();							
+						}
 
-						//(cache)
+						//caso d:m:Y - *
+						if(strcmp(third_arg, "*") == 0) {
+printf("CASO data - *\n");
+							//nome del file
+							printf("FILE TO OPEN: %s\n", filename_tmp);
+							strcat(filepath_tmp, elab.p_date);
+							strcpy(filename_tmp, elab.p_date);
 
-					} else {	//flooding
+							//creo le variaibli time_t per il confronto
+							strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+							minDate = mktime(&dateToConvert);
+							maxDate = mktime(todayDateTime);
 
+							floodingToDo();	
+						}
+
+						//caso * - d:m:Y
+						if(strcmp(second_arg, "*") == 0) {
+			printf("CASO * - data\n");
+							//nome del file
+							printf("FILE TO OPEN: %s\n", filename_tmp);
+							strcat(filepath_tmp, inizio_pandemia);
+							strcpy(filename_tmp, inizio_pandemia);
+
+							//creo le variaibli time_t per il confronto
+							strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+							minDate = mktime(&dateToConvert);
+							strptime(elab.r_date, "%d:%m:%Y", &dateToConvert);
+							maxDate = mktime(&dateToConvert);
+
+							floodingToDo();			
+						}
+
+						//caso d:m:Y - d:m:Y
+						if((strcmp(second_arg, "*") != 0) && (strcmp(third_arg, "*") != 0)) {
+							printf("CASO data - data\n");
+							printf("FILE TO OPEN: %s\n", filename_tmp);
+							strcat(filepath_tmp, elab.p_date);
+							strcpy(filename_tmp, elab.p_date);
+
+							//creo le variaibli time_t per il confronto
+							strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+							minDate = mktime(&dateToConvert);
+							strptime(elab.r_date, "%d:%m:%Y", &dateToConvert);
+							maxDate = mktime(&dateToConvert);
+
+							floodingToDo();	
+						}
 					}
+					printf("FLOODING: %i \n", flooding);
 
-					if(strcmp(first_arg, "totale") == 0) {
-						
-					}
-					if(strcmp(first_arg, "variazione") == 0) {
-						
-					}
+
+						//nessun altro ha dati per quel periodo
+			//			if() {
+							//calcolo il dato
+
+							//memorizzo il dato
+
+							//(cache)
+
+			//			} else {	//flooding
+
+			//			}
+	/*
+						if(strcmp(first_arg, "totale") == 0) {
+							
+						}
+						if(strcmp(first_arg, "variazione") == 0) {
+							
+						}*/
+					
 				}
-			}
-	
+			}	
+
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 			
 				if(peer_connected) {
