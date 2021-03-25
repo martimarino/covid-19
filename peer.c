@@ -18,8 +18,9 @@
 
 int ret, sd, len, i;
 char localhost[ADDR_LEN] = "127.0.0.1\0";
-char peer_port[PORT_LEN];	//porta del peer attuale
+char my_port[PORT_LEN];	//porta del peer attuale
 char* tmp_port;				//variabile per prelevare porta da terminale
+char peer_port[ADDR_LEN];
 
 int peer_connected = 0;		//indica se il socket è stato creato
 int peer_registered = 0;	//indica se il peer è registrato con un DS	
@@ -38,16 +39,16 @@ char fourth_arg[BUFFER_LEN];
 //variabili per prelevare i campi del periodo
 int valid_period = 1;
 struct Aggr {
-	char aggr[11];
+	char aggr[DATE_LEN];
 	char type[2];
-	char p_date[11];
-	char r_date[11];
+	char p_date[DATE_LEN];
+	char r_date[DATE_LEN];
 } elab;
 
 struct tm dateToConvert;
 time_t past_date, recent_date;
 
-struct sockaddr_in srv_addr, my_addr;
+struct sockaddr_in srv_addr, my_addr, addr;
 char buffer[BUFFER_LEN];
 
 //variabili per select()
@@ -59,7 +60,7 @@ struct timeval *timeout;
 //variabili per il file del peer
 FILE* fd;
 char filepath[BUFFER_LEN];
-char filename[11];
+char filename[DATE_LEN];
 
 //variabili per il polling del boot
 int nfds, num_open_fds, ready;
@@ -73,7 +74,7 @@ struct Neighbors {
 } my_neighbors;
 
 struct Results {
-	char date[11];
+	char date[DATE_LEN];
 	int numPeerN;
 	int numPeerT;
 } DS_info;
@@ -98,15 +99,29 @@ char dd[3], mm[3], YY[5];
 //variabili per la ricerca locale
 FILE* fd_tmp;
 char filepath_tmp[BUFFER_LEN];
-char filename_tmp[11];
-char inizio_pandemia[11];
+char filename_tmp[DATE_LEN];
+char inizio_pandemia[DATE_LEN];
 time_t minDate, maxDate, beginningDate;
-int flooding;
+int flooding, found;
 struct tm *nextDate;
-char filename_prec[11];
+char filename_prec[DATE_LEN];
+char dateInterval[DATE_LEN+DATE_LEN];
+
+struct Cache {
+	char aggr[BUFFER_LEN];
+	char type[BUFFER_LEN];
+	char p_date[BUFFER_LEN];
+	char r_date[BUFFER_LEN];
+	char date[DATE_LEN];
+	int result;
+} cache_entry;
 
 //variabili flooding
 char buffer_tmp[BUFFER_LEN];
+char side[2];
+char cacheTotale[] = "totale.txt";
+char cacheVariazione[] = "variazione.txt";
+
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
@@ -122,25 +137,30 @@ void closing_actions() {	//azioni da compiere quando un peer termina
 	FD_CLR(sd, &master);
 }
 
-void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
+void connect_to_peer(char peer_addr[], char peer_port[]) {
+
+    /* Creazione indirizzo del peer da contattare */
+    memset (&peer_addr, 0, sizeof(peer_addr)); 
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(atoi(peer_port));
+    inet_pton(AF_INET, peer_addr, &addr.sin_addr);	
+}
+
+void connect_to_DS(char DS_addr[], char DS_port[]) {		//creazione del socket
     /* Creazione socket */
     sd = socket(AF_INET, SOCK_DGRAM, 0);
 
     /* Creazione indirizzo di bind */
     memset (&my_addr, 0, sizeof(my_addr));     // Pulizia 
     my_addr.sin_family = AF_INET;
-    my_addr.sin_port = htons(atoi(peer_port));
+    my_addr.sin_port = htons(atoi(my_port));
     my_addr.sin_addr.s_addr = INADDR_ANY;
 
     /* Aggancio */
     ret = bind(sd, (struct sockaddr*)&my_addr, sizeof(my_addr));
-    if (ret < 0){
+    if (ret < 0)
         perror("Bind non riuscita ");
-		if(peer_connected == 0) {	//se il peer è gia registrato non fa exit
-			closing_actions();
-			exit(-1);
-		}
-    }
+    
     /* Creazione indirizzo del server */
     memset (&srv_addr, 0, sizeof(srv_addr)); 
     srv_addr.sin_family = AF_INET;
@@ -150,9 +170,31 @@ void peer_connect(char DS_addr[], char DS_port[]) {		//creazione del socket
 	fdmax = sd;
 	peer_connected = 1;
 	printf("Socket creato\n");
-
 }
 
+void send_(struct sockaddr_in a) {
+	do {
+		len = strlen(buffer)+1;
+		printf("Richiesta entry al DS: %s\n", buffer);       
+		ret = sendto(sd, buffer, len, 0,
+						(struct sockaddr*)&a, sizeof(a));
+		if (ret < 0)
+			sleep(POLLING_TIME);
+	} while (ret < 0);
+}
+
+void receive_(struct sockaddr_in s) {
+	//riceve comandi dal server
+	do {
+		/* Tento di ricevere i dati dal server  */
+		ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
+						(struct sockaddr*)&s, &len);
+		if (ret < 0)
+			sleep(POLLING_TIME);
+
+	} while(ret < 0);
+	printf("Ricevuto: %s\n", buffer);
+}
 
 int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 
@@ -279,7 +321,7 @@ void recoverPreviousData() {
 	}
 }
 
-void updateFile() {	//salva dati odierni su file
+void updateRegister() {	//salva dati odierni su file
 	if(atoi(second_arg) == 0)
 		printf("La quantità deve essere un intero\n");
 	else{
@@ -294,20 +336,8 @@ void writeTotal() {
 }
 */
 void communicateToDS() {
-	do {
-		//copio la struct nel buffer da inviare
-		sprintf(buffer, "SOME_ENTRIES %i %i", (tot.nuoviCasi>0)?1:0, (tot.tamponi>0)?1:0);
-		len = strlen(buffer)+1;
-		printf("Comunicazione possesso dati al DS: %s\n", buffer);
-		// Tento di inviare le informazioni di boot continuamente        
-		ret = sendto(sd, buffer, len, 0,
-					(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-		// Se la richiesta non e' stata inviata vado a dormire per un poco
-		if (ret < 0)
-			sleep(POLLING_TIME);
-		
-	} while (ret < 0);
-
+	sprintf(buffer, "SOME_ENTRIES %i %i", (tot.nuoviCasi>0)?1:0, (tot.tamponi>0)?1:0);
+	send_(srv_addr);
 	tot.nuoviCasi = 0;
 	tot.tamponi = 0;
 }
@@ -361,20 +391,22 @@ int inTime() {
 		return 0;
 }
 
-void createRegisterName() {
+void createFilePath(char path[], char name[]) {
+	strcpy(path, "./");
+	strcat(path, my_port);
+	strcat(path, "/");
+	strcat(path, name);
+}
 
-	strcpy(filepath, "./");
-	strcat(filepath, peer_port);
-	strcat(filepath, "/");
+void createRegisterName() {
 	if(inTime() == 0) {
 		tomorrowDateTime = nextDay(todayDateTime); 
 		strftime(filename, sizeof(filename), "%d:%m:%Y", tomorrowDateTime);
 	} else {
 		strftime(filename, sizeof(filename), "%d:%m:%Y", todayDateTime);
 	}
-
 	printf("FILENAME: %s\n", filename);
-	strcat(filepath, filename);
+	createFilePath(filepath, filename);
 }
 
 void checkTime() {	//controlla se bisogna chiudere il file
@@ -393,13 +425,9 @@ void checkTime() {	//controlla se bisogna chiudere il file
 		tomorrowDateTime = nextDay(todayDateTime); 
 		strftime(filename, sizeof(filename), "%d:%m:%Y", tomorrowDateTime);
 
-		printf("FILENAME: %s\n", filename);
+//printf("FILENAME: %s\n", filename);
 
-		strcpy(filepath, "./");
-		strcat(filepath, peer_port);
-		strcat(filepath, "/");
-		strcat(filepath, filename);
-		
+		createFilePath(filepath, filename);		
 		//apre file giorno successivo
 		fd = fopen(filepath, "a");
 		if(fd == NULL)
@@ -410,19 +438,92 @@ void checkTime() {	//controlla se bisogna chiudere il file
 	}
 }
 
-void receive_() {
-	//riceve comandi dal server
-	do {
-		/* Tento di ricevere i dati dal server  */
-		ret = recvfrom(sd, buffer, BUFFER_LEN, 0, 
-						(struct sockaddr*)&srv_addr, &len);
+void saveInCache (char cache[], char date[], int quantity) {
+	createFilePath(filepath, cache);
+	fd = fopen(filepath, "a");
+	if(fd) {
+		if(strcmp(cache, cacheTotale) == 0)
+			fprintf(fd, "%s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
+					elab.r_date, quantity);
+		if(strcmp(cache, cacheVariazione) == 0)
+			fprintf(fd, "%s %s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
+					elab.r_date, date, quantity);
+		fclose(fd);
+	}
+}
 
-		/* Se non ricevo niente vado a dormire per un poco */
-		if (ret < 0)
-			sleep(POLLING_TIME);
-
-	} while(ret < 0);
-	printf("Ricevuto: %s\n", buffer);
+int searchInCache(char cache[], int caso) {	
+	createFilePath(filepath, cache);
+	fd = fopen(filepath, "r");
+	if(fd) {
+		if(strcmp(cache, cacheTotale) == 0) {
+			while(fscanf(fd, "%s %s %s %s %i\n", cache_entry.aggr, 
+					cache_entry.type, cache_entry.p_date, 
+					cache_entry.r_date, cache_entry.result) != EOF) 
+			{
+				if((strcmp(cache_entry.aggr, elab.aggr) == 0) &&
+					(strcmp(cache_entry.type, elab.type) == 0) &&
+					(strcmp(cache_entry.p_date, elab.p_date) == 0) &&
+					(strcmp(cache_entry.r_date, elab.r_date) == 0)) 
+				{
+					switch(caso) {
+						case 0:
+							//stampo a video
+							printf("TOTALE: %i\n", cache_entry.result);
+							fclose(fd);
+							return 1;
+						case 1:
+							//stampo a video
+							sprintf(buffer + strlen(buffer), "%i", cache_entry.result);
+							fclose(fd);
+							return 1;
+						case 2:
+							sprintf(buffer+strlen(buffer), " %s", my_port);
+							fclose(fd);
+							return 1;
+						default:
+							break;
+					}
+				}
+			}
+		}
+		if(strcmp(cache, cacheVariazione) == 0) {
+			found = 0;
+			while(fprintf(fd, "%s %s %s %s %s %i\n", cache_entry.aggr,
+				cache_entry.type, cache_entry.p_date, cache_entry.r_date,
+				cache_entry.date, cache_entry.result) != EOF) 
+			{
+				if((strcmp(cache_entry.aggr, elab.aggr) == 0) &&
+					(strcmp(cache_entry.type, elab.type) == 0) &&
+					(strcmp(cache_entry.p_date, elab.p_date) == 0) &&
+					(strcmp(cache_entry.r_date, elab.r_date) == 0)) 
+				{
+					switch(caso) {
+						case 0:
+							found = 1;
+							printf("Variazione: %s %i\n", cache_entry.date, cache_entry.result);
+							fclose(fd);
+						case 1:
+							found = 1;
+							sprintf(buffer+strlen(buffer), " %s %i", cache_entry.date, cache_entry.result);
+							fclose(fd);
+						case 2:
+							sprintf(buffer+strlen(buffer), " %s", my_port);
+							fclose(fd);
+							return 1;
+						default:
+							break;
+					}
+				}
+			}
+			if(found == 1) {
+				fclose(fd);
+				return 1;
+			}	
+		}
+		fclose(fd);
+	}
+	return 0;
 }
 
 void getLocalTotal() {
@@ -448,19 +549,18 @@ void getLocalTotal() {
 		minDate = mktime(&dateToConvert);
 		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
 		//aggiorno filepath
-		strcpy(filepath_tmp, "./");
-		strcat(filepath_tmp, peer_port);
-		strcat(filepath_tmp, "/");
-		strcat(filepath_tmp, filename_tmp);
+		createFilePath(filepath_tmp, filename_tmp);
 printf("NUOVO FILENAME %s\n", filename_tmp);
 	}
 	printf("TOTALE: ");
 	if(strcmp(elab.type, "N") == 0) {
 		printf("%i\n", tot_tmp.nuoviCasi);
+		saveInCache(cacheTotale, "", tot_tmp.nuoviCasi);
 	}
 	if(strcmp(elab.type, "T") == 0) {
 		printf("%i\n", tot_tmp.tamponi);
-	}
+		saveInCache(cacheTotale, "", tot_tmp.tamponi);
+	}	
 }
 
 void localVariation(){
@@ -491,11 +591,14 @@ void localVariation(){
 		}
 
 		if(!((tot_tmp.nuoviCasi == tot_tmp.tamponi) && (tot_tmp.nuoviCasi == -1))){
+			sprintf(dateInterval, "%s-%s", filename_prec, filename_tmp);
 			if(strcmp(elab.type, "N") == 0) {
-				printf("%s - %s: %i\n", filename_prec, filename_tmp, tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
+				printf("%s: %i\n", dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
+				saveInCache(cacheVariazione, dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
 			}
 			if(strcmp(elab.type, "T") == 0) {
-				printf("%s - %s: %i\n", filename_prec, filename_tmp, tot_tmp.tamponi-var_tmp.tamponi);
+				printf("%s: %i\n", dateInterval, tot_tmp.tamponi-var_tmp.tamponi);
+				saveInCache(cacheVariazione, dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
 			}
 			strcpy(filename_prec, filename_tmp);
 		}
@@ -506,11 +609,7 @@ void localVariation(){
 		dateToConvert = *nextDate;
 		minDate = mktime(&dateToConvert);
 		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
-		//aggiorno filepath
-		strcpy(filepath_tmp, "./");
-		strcat(filepath_tmp, peer_port);
-		strcat(filepath_tmp, "/");
-		strcat(filepath_tmp, filename_tmp);
+		createFilePath(filepath_tmp, filename_tmp);
 //printf("NUOVO FILENAME %s\n", filename_tmp);
 	}
 }
@@ -589,13 +688,8 @@ printf("CASO T > 1\n");
 		dateToConvert = *nextDate;
 		minDate = mktime(&dateToConvert);
 		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
-		//aggiorno filepath
-		strcpy(filepath_tmp, "./");
-		strcat(filepath_tmp, peer_port);
-		strcat(filepath_tmp, "/");
-		strcat(filepath_tmp, filename_tmp);
+		createFilePath(filepath_tmp, filename_tmp);
 printf("NUOVO FILENAME %s\n", filename_tmp);
-	
 		//ricopio la lista del DS
 		strcpy(buffer_tmp, buffer);
 	}
@@ -604,16 +698,13 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 void initCaseVariables() {
 //percorso del file da aprire
 	strcpy(filename_tmp, elab.p_date);
-	strcpy(filepath_tmp, "./");
-	strcat(filepath_tmp, peer_port);
-	strcat(filepath_tmp, "/");
 
 	//caso *,*
 	if((strcmp(elab.p_date, "*") == 0) && (strcmp(elab.r_date, "*") == 0)) {
 //printf("CASO * - *\n");
 		//nome del file
 //printf("FILE TO OPEN: %s\n", filename_tmp);
-		strcat(filepath_tmp, inizio_pandemia);
+		createFilePath(filepath_tmp, inizio_pandemia);
 		strcpy(filename_tmp, inizio_pandemia);
 
 		//creo le variabili time_t per il confronto
@@ -629,7 +720,7 @@ void initCaseVariables() {
 //printf("CASO data - *\n");
 		//nome del file
 //printf("FILE TO OPEN: %s\n", filename_tmp);
-		strcat(filepath_tmp, elab.p_date);
+		createFilePath(filepath_tmp, elab.p_date);
 		strcpy(filename_tmp, elab.p_date);
 
 		//creo le variaibli time_t per il confronto
@@ -645,7 +736,7 @@ void initCaseVariables() {
 //printf("CASO * - data\n");
 		//nome del file
 //printf("FILE TO OPEN: %s\n", filename_tmp);
-		strcat(filepath_tmp, inizio_pandemia);
+		createFilePath(filepath_tmp, inizio_pandemia);
 		strcpy(filename_tmp, inizio_pandemia);
 
 		//creo le variaibli time_t per il confronto
@@ -659,7 +750,7 @@ void initCaseVariables() {
 	if((strcmp(elab.p_date, "*") != 0) && (strcmp(elab.r_date, "*") != 0)) {
 //printf("CASO data - data\n");
 //printf("FILE TO OPEN: %s\n", filename_tmp);
-		strcat(filepath_tmp, elab.p_date);
+		createFilePath(filepath_tmp, elab.p_date);
 		strcpy(filename_tmp, elab.p_date);
 
 		//creo le variaibli time_t per il confronto
@@ -695,7 +786,7 @@ int main(int argc, char* argv[]){
 	}
 	if(argc == 2){
 		strcpy(tmp_port, argv[argc-1]);
-		strcpy(peer_port, tmp_port);		
+		strcpy(my_port, tmp_port);		
 	}
 
 	createRegisterName();
@@ -726,7 +817,7 @@ int main(int argc, char* argv[]){
 
 		if (FD_ISSET(sd, &read_fds) && (peer_connected == 1)) {  //sd pronto in lettura
 
-			receive_();
+			receive_(srv_addr);
 
 			howmany = parse_string(buffer);
 
@@ -751,6 +842,80 @@ int main(int argc, char* argv[]){
 				closing_actions();
 				exit(0);
 			}
+
+			if(strcmp(command, "REQ_DATA") == 0) {
+				//se ho il dato in cache lo invio
+				//if() {
+					printf("DATO IN CACHE\n");
+					//metto i dati nel buffer
+					//printf("REPLY DATA %s", buffer);
+					//send_(addr);
+				//} else {
+					//printf("REPLY DATA");
+					//send_(addr);
+				//}
+			}
+
+			if(strcmp(command, "REPLY_DATA") == 0) {
+				token = strtok(buffer, " ");
+				token = strtok(buffer, " ");
+				if(token != NULL) {
+					//prelevo dato
+					printf("prelevo dato\n");
+					//elaboro dati
+					//stampo dati
+				} else {
+					if(strcmp(side, "L") == 0) {
+						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						printf("FLOOD_FOR_ENTRIES L %s %s %s %s", 
+								elab.aggr, elab.type, elab.p_date, elab.r_date);
+					}
+					if(strcmp(side, "R") == 0) {
+						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						printf("FLOOD_FOR_ENTRIES R %s %s %s %s", 
+								elab.aggr, elab.type, elab.p_date, elab.r_date);
+					}
+					send_(addr);	
+				}
+			}
+
+			if(strcmp(command, "FLOOD_FOR_ENTRIES") == 0) {
+				if(strcmp(first_arg, side) != 0) {
+					if((strcmp(first_arg, "L") == 0) && (strcmp(side, "R"))) {	//risposta
+						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						sprintf(buffer, "REPLY_FLOOD R %s", my_port);
+					} 
+					if((strcmp(first_arg, "R") == 0) && (strcmp(side, "L"))) {
+						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						sprintf(buffer, "REPLY_FLOOD L %s", my_port);
+					}
+				} else {
+					if(strcmp(side, "L") == 0) 	//inoltro
+						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+					if(strcmp(side, "R") == 0) 	//inoltro
+						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+				}
+				send_(addr);
+			}
+
+			if(strcmp(command, "REPLY_FLOOD") == 0) {
+				if(strcmp(side, "L") == 0) 	
+					connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+				if(strcmp(side, "R") == 0)	
+					connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+				sprintf(buffer+strlen(buffer), "%s", my_port);
+				send_(addr);
+			}
+/*
+			if(strcmp(command, "REQ_ENTRIES") == 0) {
+
+
+			}
+
+			if(strcmp(command, "REPLY_ENTRIES") == 0) {
+
+			}
+*/
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -767,7 +932,7 @@ int main(int argc, char* argv[]){
 			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 0)){
 				
 				printf("Richiesta connessione al DS...\n");
-				peer_connect(first_arg, second_arg);
+				connect_to_DS(first_arg, second_arg);
 
 				num_open_fds = nfds = 2;	
 				pfds = calloc(nfds, sizeof(struct pollfd));
@@ -779,27 +944,16 @@ int main(int argc, char* argv[]){
 				pfds[1].events = POLLIN;
 
 				while(1) {
-
-					do {
-						//copio la struct nel buffer da inviare
-						sprintf(buffer, "BOOT %s %s", localhost, peer_port);
-						len = strlen(buffer)+1;
-						printf("Boot message inviato: %s\n", buffer);
-						// Tento di inviare le informazioni di boot continuamente        
-						ret = sendto(sd, buffer, len, 0,
-										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-						// Se la richiesta non e' stata inviata vado a dormire per un poco
-						if (ret < 0)
-							sleep(POLLING_TIME);
-						
-					} while (ret < 0);
+					
+					sprintf(buffer, "BOOT %s %s", localhost, my_port);
+					send_(srv_addr);
 
 					ready = poll(pfds, nfds, 4000);
 
 					if(ready) {
 						if(pfds[1].revents) {	// riceve qualcosa da DS
 							
-							receive_();
+							receive_(srv_addr);
 							parse_string(buffer);
 
 							if(strcmp(command, "ACK") == 0) {
@@ -856,7 +1010,7 @@ int main(int argc, char* argv[]){
 					printf("TOTALE: tamponi: %i nuovi casi: %i\n",
 						tot.tamponi, tot.nuoviCasi);
 					//salvataggio su file
-					updateFile();
+					updateRegister();
 				}
 			}	
 
@@ -873,47 +1027,34 @@ int main(int argc, char* argv[]){
 					//compilo struct Aggr
 					strcpy(elab.aggr, first_arg);
 					strcpy(elab.type, second_arg);
-					do {
-						//invio 
-						sprintf(buffer, "GET %s %s %s", elab.type, elab.p_date, elab.r_date);
-						len = strlen(buffer)+1;
-						printf("Richiesta entry al DS: %s\n", buffer);       
-						ret = sendto(sd, buffer, len, 0,
-										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-						// Se la richiesta non e' stata inviata vado a dormire per un poco
-						if (ret < 0)
-							sleep(POLLING_TIME);
-					} while (ret < 0);
+				
+					sprintf(buffer, "GET %s %s %s", elab.type, elab.p_date, elab.r_date);
+					send_(srv_addr);
 
-					receive_();
+					receive_(srv_addr);
 					strcpy(buffer_tmp, buffer);
 
-					if(howmany == 1) {	//il DS non ha dati relativi
-						flooding = 0;
-					} else {
-						initCaseVariables();
-					}
-
+					initCaseVariables();
 					floodingToDo();
-
+	
 printf("FLOODING: %i \n", flooding);
-
 					if(flooding == 0) {
 						initCaseVariables();
 						//calcolo dato
-						if(strcmp(elab.aggr, "totale") == 0) {
+						if(strcmp(elab.aggr, "totale") == 0) 
 							getLocalTotal();
-						}
-						if(strcmp(elab.aggr, "variazione") == 0) {
+						if(strcmp(elab.aggr, "variazione") == 0) 
 							localVariation();
-						}
-
 						//memorizzare dato
-
-						//stampare dato
 					}
 					else {
-
+						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						sprintf(buffer, "REQ_DATA %s %s %s %s", elab.aggr, elab.type, elab.p_date, elab.r_date);
+						send_(addr);
+						
+						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						sprintf(buffer, "REQ_DATA %s %s %s %s", elab.aggr, elab.type, elab.p_date, elab.r_date);
+						send_(addr);					
 					}					
 				}
 			}	
@@ -921,18 +1062,8 @@ printf("FLOODING: %i \n", flooding);
 			if((strcmp(command, "stop") == 0) && (valid_input == 1)) {	
 			
 				if(peer_connected) {
-					do {
-						//invio 
-						sprintf(buffer, "QUIT %s %s", localhost, peer_port);
-						len = strlen(buffer)+1;
-						printf("Comunicazione di terminazione al DS: %s\n", buffer);
-						// Tento di inviare le informazioni di boot continuamente        
-						ret = sendto(sd, buffer, len, 0,
-										(struct sockaddr*)&srv_addr, sizeof(srv_addr));
-						// Se la richiesta non e' stata inviata vado a dormire per un poco
-						if (ret < 0)
-							sleep(POLLING_TIME);
-					} while (ret < 0);
+					sprintf(buffer, "QUIT %s %s", localhost, my_port);
+					send_(srv_addr);
 				}
 
 				printf("Terminazione forzata\n");
@@ -941,10 +1072,7 @@ printf("FLOODING: %i \n", flooding);
 			}
 		}	
 	} //while
-
 	closing_actions();
-    printf("%s\n", buffer);
-
 } //main
 
 
