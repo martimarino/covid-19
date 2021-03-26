@@ -25,7 +25,7 @@ int peer_registered = 0;	//indica se il peer è registrato con un DS
 char input[BUFFER_LEN];
 char *token;				//per l'utilizzo di strtok
 int valid_input = 1;		//indica se un comando ha il fomato corretto
-int howmany;				//numero token (compreso cmd)
+int how_many;				//numero token (compreso cmd)
 char command[CMD_LEN+1];	//primo campo di un messaggio
 char first_arg[BUFFER_LEN];
 char second_arg[BUFFER_LEN];
@@ -134,8 +134,8 @@ struct DataToSend {
 	char type[BUFFER_LEN];
 	char p_date[BUFFER_LEN];
 	char r_date[BUFFER_LEN];
-	char date[BUFFER_LEN];
-	int result;
+	char variation[BUFFER_LEN];
+	int total;
 	struct DataToSend *next;
 };
 struct StoredResults
@@ -144,12 +144,11 @@ struct StoredResults
 	struct DataToSend *list;
 } store;
 struct DataToSend *p;
+int my_request, flooded = 0, q;
+char di[DATE_LEN+DATE_LEN];
 
-//struct Cache data_to_send[ARRAY_DIM];
-//int id[ARRAY_DIM];
-int index = 0, my_request, flooded = 0;
 
-void closing_actions() {	//azioni da compiere quando un peer termina
+void closingActions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
 	free(timeout);
@@ -164,7 +163,7 @@ void closing_actions() {	//azioni da compiere quando un peer termina
 	FD_CLR(sd, &master);
 }
 
-void connect_to_peer(char peer_addr[], char peer_port[]) {
+void connectToPeer(char peer_addr[], char peer_port[]) {
 
     /* Creazione indirizzo del peer da contattare */
     memset (&peer_addr, 0, sizeof(peer_addr)); 
@@ -173,7 +172,7 @@ void connect_to_peer(char peer_addr[], char peer_port[]) {
     inet_pton(AF_INET, peer_addr, &addr.sin_addr);	
 }
 
-void connect_to_DS(char DS_addr[], char DS_port[]) {		//creazione del socket
+void connectToDS(char DS_addr[], char DS_port[]) {		//creazione del socket
     /* Creazione socket */
     sd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -223,7 +222,7 @@ void receive_(struct sockaddr_in s) {
 	printf("Ricevuto: %s\n", buffer);
 }
 
-int parse_string(char buffer[]) {	//separa gli argomenti di un comando
+int parseString(char buffer[]) {	//separa gli argomenti di un comando
 
 	token = strtok(buffer, " ");
 
@@ -271,7 +270,7 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 	return i;
 }
 
-int parse_period(char buffer[]) {	//separa le date del periodo
+int parsePeriod(char buffer[]) {	//separa le date del periodo
 
 	token = strtok(buffer, "-");
 
@@ -672,13 +671,24 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 			strcpy(p->type, peer_req.type);
 			strcpy(p->p_date, peer_req.p_date);
 			strcpy(p->r_date, peer_req.r_date);
-			p->result = tot_tmp.nuoviCasi;
+			p->total = tot_tmp.nuoviCasi;
 			p->next = NULL;
 		}
 		if((strcmp(type, "N") == 0) && (tot_tmp.nuoviCasi > 0)) 
-			p->result = tot_tmp.nuoviCasi;
+			p->total = tot_tmp.nuoviCasi;
 		if((strcmp(type, "T") == 0) && (tot_tmp.tamponi > 0))
-			p->result = tot_tmp.tamponi;
+			p->total = tot_tmp.tamponi;
+	}
+	if(caso == 2) {
+		printf("TOTALE: ");
+		if(strcmp(type, "N") == 0) {
+			printf("%i\n", tot_tmp.nuoviCasi+atoi(second_arg));
+			saveInCache(cacheTotale, "", tot_tmp.nuoviCasi+atoi(second_arg));
+		}
+		if(strcmp(type, "T") == 0) {
+			printf("%i\n", tot_tmp.tamponi+atoi(second_arg));
+			saveInCache(cacheTotale, "", tot_tmp.tamponi+atoi(second_arg));
+		}
 	}
 }
 
@@ -740,11 +750,30 @@ void getLocalVariation(int caso, char type[]){
 				p->next = NULL;
 				
 				if(strcmp(type, "N") == 0) 
-					sprintf(p->date+strlen(p->date), " %s %i", dateInterval, 
+					sprintf(p->variation+strlen(p->variation), "-%s %i", dateInterval, 
 							tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
 				if(strcmp(type, "N") == 0) 
-					sprintf(p->date+strlen(p->date), " %s %i", dateInterval, 
+					sprintf(p->variation+strlen(p->variation), "-%s %i", dateInterval, 
 							tot_tmp.tamponi-var_tmp.tamponi);
+			}
+			if(caso == 2) {
+				strcpy(buffer_tmp, input);
+				token = strtok(buffer_tmp, "-");  //elimina REPLY_ENTRIES e id		
+				while (token != NULL) {
+					q = 0;
+					token = strtok(NULL, "-");	//preleva dato [data quantità]
+					sscanf(token, "%s %i", di, q);
+					if(strcmp(di, dateInterval) != 0)
+						q = 0;
+				}				
+				if(strcmp(type, "N") == 0) {
+					printf("Variazione %s: %i\n", dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi+q);
+					saveInCache(cacheVariazione, dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi+q);
+				}
+				if(strcmp(type, "T") == 0) {
+					printf("Variazione %s: %i\n", dateInterval, tot_tmp.tamponi-var_tmp.tamponi+q);
+					saveInCache(cacheVariazione, dateInterval, tot_tmp.tamponi-var_tmp.tamponi+q);
+				}
 			}
 			strcpy(filename_prec, filename_tmp);
 		}
@@ -966,7 +995,7 @@ int main(int argc, char* argv[]){
 
 			receive_(srv_addr);
 			strcpy(input, buffer);
-			howmany = parse_string(buffer);
+			how_many = parseString(buffer);
 
 			if(strcmp(command, "NEIGHBORS") == 0) {	//aggiornamento
 			
@@ -986,7 +1015,7 @@ int main(int argc, char* argv[]){
 
 			if(strcmp(command, "ESC") == 0) {
 				printf("Chiusura a causa della terminazione del DS\n");
-				closing_actions();
+				closingActions();
 				exit(0);
 			}
 
@@ -1024,11 +1053,11 @@ int main(int argc, char* argv[]){
 					}
 				} else {
 						my_request = rand();
-						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 						printf("FLOOD_FOR_ENTRIES %i L %s %s %s %s", my_request,
 								elab.aggr, elab.type, elab.p_date, elab.r_date);
 						send_(addr);
-						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 						printf("FLOOD_FOR_ENTRIES %i R %s %s %s %s", my_request,
 								elab.aggr, elab.type, elab.p_date, elab.r_date);
 						send_(addr);	
@@ -1056,9 +1085,9 @@ int main(int argc, char* argv[]){
 					}
 
 					if(strcmp(second_arg, "L") == 0) 	//scelta del destinatario
-						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 					if(strcmp(second_arg, "R") == 0) 
-						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 				
 				} else {
 
@@ -1080,9 +1109,9 @@ int main(int argc, char* argv[]){
 					flooded = 1;
 					strcpy(buffer, input);
 					if(strcmp(second_arg, "L") == 0) 	//inoltro
-						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 					if(strcmp(second_arg, "R") == 0) 	//inoltro
-						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 				}
 				send_(addr);
 			}
@@ -1096,7 +1125,7 @@ int main(int argc, char* argv[]){
 					sprintf(buffer, "REQ_ENTRIES %i %s", my_request, my_port);
 					while(token != NULL) {
 						token = strtok(NULL, " ");
-						connect_to_peer(localhost, token);
+						connectToPeer(localhost, token);
 						sprintf(buffer, "REQ_ENTRIES %i %s", my_request, my_port);
 						send_(addr);
 					}
@@ -1116,9 +1145,9 @@ int main(int argc, char* argv[]){
 					}
 
 					if(strcmp(second_arg, "R") == 0) 
-						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 					if(strcmp(second_arg, "L") == 0)	
-						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 					send_(addr);
 				}
 			}
@@ -1126,13 +1155,13 @@ int main(int argc, char* argv[]){
 			if(strcmp(command, "REQ_ENTRIES") == 0) {
 				//cerca il dato memorizzato 
 				p = store.list;
-				sprintf(buffer, "REPLY_ENTRIES ");
+				sprintf(buffer, "REPLY_ENTRIES %i ", p->id);
 				if(strcmp(p->id, first_arg) == 0) {
 					if(peer_req.aggr == "totale") {
-						sprintf(buffer+strlen(buffer), p->result);
+						sprintf(buffer+strlen(buffer), p->total);
 					}
 					if(peer_req.aggr == "variazione") {
-						sprintf(buffer+strlen(buffer), p->date);
+						sprintf(buffer+strlen(buffer), p->variation);
 					}
 				} else {
 					for(i = 0; i < store.num-1; i++)  {
@@ -1141,14 +1170,14 @@ int main(int argc, char* argv[]){
 						p = p->next;
 					}
 					if(peer_req.aggr == "totale") {
-						sprintf(buffer+strlen(buffer), p->next->result);
+						sprintf(buffer+strlen(buffer), p->next->total);
 					}
 					if(peer_req.aggr == "variazione") {
-						sprintf(buffer+strlen(buffer), p->next->date);
+						sprintf(buffer+strlen(buffer), p->next->variation);
 					}
 				}
 
-				connect_to_peer(localhost, second_arg);
+				connectToPeer(localhost, second_arg);
 				send_(srv_addr);
 				if(store.num == 1)
 					free(store.list);
@@ -1160,7 +1189,12 @@ int main(int argc, char* argv[]){
 			}
 
 			if(strcmp(command, "REPLY_ENTRIES") == 0) {
-				
+				if(strcmp(elab.aggr, "totale") == 0) {
+					getLocalTotal(2, elab.type);
+				}
+				if(strcmp(elab.aggr, "variazione") == 0) {
+					getLocalVariation(2, elab.type);
+				}
 			}
 
 		}
@@ -1170,7 +1204,7 @@ int main(int argc, char* argv[]){
 			scanf("%[^\n]", buffer);
 			scanf("%*c");
 			
-			parse_string(buffer);
+			parseString(buffer);
 
 			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 1)){
 				printf("Errore: peer già registato presso il DS\n");
@@ -1179,7 +1213,7 @@ int main(int argc, char* argv[]){
 			if((strcmp(command, "start") == 0) && (valid_input == 1) && (peer_registered == 0)){
 				
 				printf("Richiesta connessione al DS...\n");
-				connect_to_DS(first_arg, second_arg);
+				connectToPeer(first_arg, second_arg);
 
 				num_open_fds = nfds = 2;	
 				pfds = calloc(nfds, sizeof(struct pollfd));
@@ -1201,7 +1235,7 @@ int main(int argc, char* argv[]){
 						if(pfds[1].revents) {	// riceve qualcosa da DS
 							
 							receive_(srv_addr);
-							parse_string(buffer);
+							parseString(buffer);
 
 							if(strcmp(command, "ACK") == 0) {
 								peer_registered = 1;
@@ -1210,7 +1244,7 @@ int main(int argc, char* argv[]){
 
 							if(strcmp(command, "MAX_EXC") == 0) {
 								printf("Non è possibile registrarsi\n");
-								closing_actions();
+								closingActions();
 								exit(0);
 							}
 						}
@@ -1220,11 +1254,11 @@ int main(int argc, char* argv[]){
 							scanf("%[^\n]", buffer);
 							scanf("%*c");
 
-							parse_string(buffer);
+							parseString(buffer);
 							
 							if((strcmp(command, "stop") == 0) && (valid_input == 1)) {
 								printf("Terminazione forzata\n");
-								closing_actions();
+								closingActions();
 								exit(0);
 							}
 						}
@@ -1240,7 +1274,6 @@ int main(int argc, char* argv[]){
 				else 
 					printf("File open\n");
 			}
-
 
 			if((strcmp(command, "add") == 0) && (valid_input == 1)) {
 				if(peer_connected == 0)
@@ -1262,7 +1295,7 @@ int main(int argc, char* argv[]){
 			}	
 
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {
-				valid_period = parse_period(third_arg);
+				valid_period = parsePeriod(third_arg);
 				if((strcmp(first_arg, "totale") != 0 && strcmp(first_arg, "variazione") != 0) ||
 				    (strcmp(second_arg, "N") != 0) && (strcmp(second_arg, "T") != 0) ||
 					(valid_period == 0)) 
@@ -1301,11 +1334,11 @@ printf("FLOODING: %i \n", flooding);
 						}
 					}
 					else {
-						connect_to_peer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 						sprintf(buffer, "REQ_DATA %s %s %s %s", elab.aggr, elab.type, elab.p_date, elab.r_date);
 						send_(addr);
 						
-						connect_to_peer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 						sprintf(buffer, "REQ_DATA %s %s %s %s", elab.aggr, elab.type, elab.p_date, elab.r_date);
 						send_(addr);					
 					}					
@@ -1320,10 +1353,10 @@ printf("FLOODING: %i \n", flooding);
 				}
 
 				printf("Terminazione forzata\n");
-				closing_actions();
+				closingActions();
 				exit(0);
 			}
 		}	
 	} //while
-	closing_actions();
+	closingActions();
 } //main
