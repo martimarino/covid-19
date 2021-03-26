@@ -12,10 +12,6 @@
 #include <errno.h>
 #include "shared.h"
 
-#define POLLING_TIME  5
-#define RES_LEN       26    // Wed Dec 09 17:41:29 2020\0\n
-#define ACK_LEN 	  3
-
 int ret, sd, len, i;
 char localhost[ADDR_LEN] = "127.0.0.1\0";
 char my_port[PORT_LEN];	//porta del peer attuale
@@ -40,7 +36,7 @@ char sixth_arg[BUFFER_LEN];
 
 //variabili per prelevare i campi del periodo
 int valid_period = 1;
-struct Aggr {
+struct Request {
 	char aggr[DATE_LEN];
 	char type[2];
 	char p_date[DATE_LEN];
@@ -81,7 +77,7 @@ struct DS_Results {
 	int numPeerT;
 } DS_info;
 
-struct Info {
+struct Totale {
 	int nuoviCasi;
 	int tamponi;
 } tot, tot_tmp, var_tmp;
@@ -132,14 +128,32 @@ struct NeighborEntry {
 char buffer_tmp[BUFFER_LEN];
 char cacheTotale[] = "totale.txt";
 char cacheVariazione[] = "variazione.txt";
-struct Cache data_to_send[ARRAY_DIM];
-int id[ARRAY_DIM];
+struct DataToSend {
+	int id;
+	char aggr[BUFFER_LEN];
+	char type[BUFFER_LEN];
+	char p_date[BUFFER_LEN];
+	char r_date[BUFFER_LEN];
+	char date[BUFFER_LEN];
+	int result;
+	struct DataToSend *next;
+};
+struct StoredResults
+{
+	int num;
+	struct DataToSend *list;
+} store;
+struct DataToSend *p;
+
+//struct Cache data_to_send[ARRAY_DIM];
+//int id[ARRAY_DIM];
 int index = 0, my_request, flooded = 0;
 
 void closing_actions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
 	free(timeout);
+	free(p);
 
 	if(peer_connected == 1) {
 		close(sd);
@@ -230,6 +244,12 @@ int parse_string(char buffer[]) {	//separa gli argomenti di un comando
 				break;
 			case 4:
 				sscanf(token, "%s", &fourth_arg);
+				break;
+			case 5:
+				sscanf(token, "%s", &fifth_arg);
+				break;
+			case 6:
+				sscanf(token, "%s", &sixth_arg);
 				break;
 			default:
 				printf("Comando non riconosciuto\n");
@@ -636,30 +656,29 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 		}	
 	}
 	if(caso == 1) {
-		if((strcmp(type, "N") == 0) && (tot_tmp.nuoviCasi > 0)) {
-			strcpy(data_to_send[index].aggr, peer_req.aggr);
-			strcpy(data_to_send[index].type, peer_req.type);
-			strcpy(data_to_send[index].p_date, peer_req.p_date);
-			strcpy(data_to_send[index].r_date, peer_req.r_date);
-			data_to_send[index].result = tot_tmp.nuoviCasi;
-			for(i = 0; i < ARRAY_DIM; i++)
-				if(id[i] == 0)
+		if((tot_tmp.nuoviCasi > 0) || (tot_tmp.tamponi > 0)) {
+			p = store.list;
+			for(i = 0; i < store.num; i++) {
+				if(p == NULL) {
+					p->next = malloc(sizeof(struct DataToSend));
+					p = p->next;
+					store.num++;
 					break;
-			id[i] = atoi(first_arg);
-			index++;
+				}
+				p = store.list->next;
+			}
+			p->id = atoi(first_arg);
+			strcpy(p->aggr, peer_req.aggr);
+			strcpy(p->type, peer_req.type);
+			strcpy(p->p_date, peer_req.p_date);
+			strcpy(p->r_date, peer_req.r_date);
+			p->result = tot_tmp.nuoviCasi;
+			p->next = NULL;
 		}
-		if((strcmp(type, "T") == 0) && (tot_tmp.tamponi > 0) && (index < ARRAY_DIM)) {
-			strcpy(data_to_send[index].aggr, peer_req.aggr);
-			strcpy(data_to_send[index].type, peer_req.type);
-			strcpy(data_to_send[index].p_date, peer_req.p_date);
-			strcpy(data_to_send[index].r_date, peer_req.r_date);
-			data_to_send[index].result = tot_tmp.tamponi;
-			for(i = 0; i < ARRAY_DIM; i++)
-				if(id[i] == 0)
-					break;	
-			id[i] = atoi(first_arg);
-			index++;
-		}	
+		if((strcmp(type, "N") == 0) && (tot_tmp.nuoviCasi > 0)) 
+			p->result = tot_tmp.nuoviCasi;
+		if((strcmp(type, "T") == 0) && (tot_tmp.tamponi > 0))
+			p->result = tot_tmp.tamponi;
 	}
 }
 
@@ -703,19 +722,29 @@ void getLocalVariation(int caso, char type[]){
 				}
 			}
 			if(caso == 1) {
-				if(index < ARRAY_DIM) {
-					if(strcmp(type, "N") == 0) 
-						sprintf(data_to_send[index].date+strlen(data_to_send[index].date), 
-							" %s %i", dateInterval, tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
-					if(strcmp(type, "N") == 0) 
-						sprintf(data_to_send[index].date+strlen(data_to_send[index].date), 
-							" %s %i", dateInterval, tot_tmp.tamponi-var_tmp.tamponi);
-					for(i = 0; i < ARRAY_DIM; i++)
-						if(id[i] == 0)
-							break;
-					id[i] = atoi(first_arg);
-					index++;
+				p = store.list;
+				for(i = 0; i < store.num; i++) {
+					if(p == NULL) {
+						p->next = malloc(sizeof(struct DataToSend));
+						p = p->next;
+						store.num++;
+						break;
+					}
+					p = store.list->next;
 				}
+				p->id = atoi(first_arg);
+				strcpy(p->aggr, peer_req.aggr);
+				strcpy(p->type, peer_req.type);
+				strcpy(p->p_date, peer_req.p_date);
+				strcpy(p->r_date, peer_req.r_date);
+				p->next = NULL;
+				
+				if(strcmp(type, "N") == 0) 
+					sprintf(p->date+strlen(p->date), " %s %i", dateInterval, 
+							tot_tmp.nuoviCasi-var_tmp.nuoviCasi);
+				if(strcmp(type, "N") == 0) 
+					sprintf(p->date+strlen(p->date), " %s %i", dateInterval, 
+							tot_tmp.tamponi-var_tmp.tamponi);
 			}
 			strcpy(filename_prec, filename_tmp);
 		}
@@ -883,13 +912,11 @@ void initCaseVariables(char dateP[], char dateR[]) {
 int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
-	if(tmp_port == NULL) {
-		perror("Memory not allocated: \n");
-		exit(-1);
-	}
-
 	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
-	if(token == NULL) {
+	store.num = 0;
+	store.list = malloc(30*sizeof(struct DataToSend));
+	p = malloc(sizeof(struct DataToSend));
+	if((tmp_port == NULL) || (token == NULL) || (store.list == NULL)){
 		perror("Memory not allocated: \n");
 		exit(-1);
 	}
@@ -1010,20 +1037,22 @@ int main(int argc, char* argv[]){
 
 			if(strcmp(command, "FLOOD_FOR_ENTRIES") == 0) {
 				if(flooded == 1) {	//risposta
-
-					for(i = 0; i < ARRAY_DIM; i++)
-						if(id[i] == atoi(first_arg))
+					//cerco risultato
+					for(i = 0; i < store.num; i++)  {
+						if(strcmp(p->next->id, first_arg) == 0)
 							break;
-					if (i != ARRAY_DIM)	{	//ho le entry
+						p = p->next;
+					}
+					if (p != NULL)	{	//ho le entry
 						if(strcmp(second_arg, "L") == 0) 
-							sprintf(buffer, "REPLY_FLOOD %i R %s ", id[i], my_port);
+							sprintf(buffer, "REPLY_FLOOD %i R %s ", atoi(first_arg), my_port);
 						if(strcmp(second_arg, "R") == 0)
-							sprintf(buffer, "REPLY_FLOOD %i L %s ", id[i], my_port);
+							sprintf(buffer, "REPLY_FLOOD %i L %s ", atoi(first_arg), my_port);
 					} else {
 						if(strcmp(second_arg, "L") == 0) 
-							sprintf(buffer, "REPLY_FLOOD %i R", id[i]);
+							sprintf(buffer, "REPLY_FLOOD %i R", atoi(first_arg));
 						if(strcmp(second_arg, "R") == 0)
-							sprintf(buffer, "REPLY_FLOOD %i L", id[i]);					
+							sprintf(buffer, "REPLY_FLOOD %i L", atoi(first_arg));					
 					}
 
 					if(strcmp(second_arg, "L") == 0) 	//scelta del destinatario
@@ -1074,10 +1103,12 @@ int main(int argc, char* argv[]){
 					
 				} else {
 					strcpy(buffer, input);
-					for(i = 0; i < ARRAY_DIM; i++)
-						if(id[i] == atoi(first_arg))
+					for(i = 0; i < store.num; i++)  {
+						if(strcmp(p->next->id, first_arg) == 0)
 							break;
-					if (i != ARRAY_DIM)	{	//ho le entry
+						p = p->next;
+					}
+					if (p != NULL)	{	//ho le entry
 						if(strcmp(second_arg, "L") == 0) 
 							sprintf(buffer+strlen(buffer), " %s", my_port);
 						if(strcmp(second_arg, "R") == 0)
@@ -1093,24 +1124,45 @@ int main(int argc, char* argv[]){
 			}
 
 			if(strcmp(command, "REQ_ENTRIES") == 0) {
-				for(i = 0; i < ARRAY_DIM; i++) 
-					if(id[i] == atoi(first_arg))
-						break;
+				//cerca il dato memorizzato 
+				p = store.list;
 				sprintf(buffer, "REPLY_ENTRIES ");
-				if(peer_req.aggr == "totale") {
-					sprintf(buffer+strlen(buffer), data_to_send[i].result);
+				if(strcmp(p->id, first_arg) == 0) {
+					if(peer_req.aggr == "totale") {
+						sprintf(buffer+strlen(buffer), p->result);
+					}
+					if(peer_req.aggr == "variazione") {
+						sprintf(buffer+strlen(buffer), p->date);
+					}
+				} else {
+					for(i = 0; i < store.num-1; i++)  {
+						if(strcmp(p->next->id, first_arg) == 0)
+							break;
+						p = p->next;
+					}
+					if(peer_req.aggr == "totale") {
+						sprintf(buffer+strlen(buffer), p->next->result);
+					}
+					if(peer_req.aggr == "variazione") {
+						sprintf(buffer+strlen(buffer), p->next->date);
+					}
 				}
-				if(peer_req.aggr == "variazione") {
-					sprintf(buffer+strlen(buffer), data_to_send[i].date);
-				}
+
 				connect_to_peer(localhost, second_arg);
 				send_(srv_addr);
+				if(store.num == 1)
+					free(store.list);
+				else {
+					p->next = p->next->next;
+					free(p->next);
+				}
+				store.num--;
 			}
-/*
-			if(strcmp(command, "REPLY_ENTRIES") == 0) {
 
+			if(strcmp(command, "REPLY_ENTRIES") == 0) {
+				
 			}
-*/
+
 		}
 
 		if (FD_ISSET(0, &read_fds)) {  	//stdin pronto in lettura
@@ -1219,7 +1271,7 @@ int main(int argc, char* argv[]){
 					printf("get [totale|variazione] [N|T] dd1:mm1:yyyy1-dd2:mm2:yyyy2\n");
 
 				} else {
-					//compilo struct Aggr
+					//compilo struct Request
 					strcpy(elab.aggr, first_arg);
 					strcpy(elab.type, second_arg);
 				
