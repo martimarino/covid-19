@@ -152,8 +152,6 @@ void closingActions() {	//azioni da compiere quando un peer termina
 	free(tmp_port);
 	free(token);
 	free(timeout);
-	if(p)
-		free(p);
 
 	if(peer_connected == 1) {
 		close(sd);
@@ -466,26 +464,26 @@ void checkTime() {	//controlla se bisogna chiudere il file
 
 void saveInCache (char cache[], char date[], int quantity) {
 	createFilePath(filepath, cache);
-	fd = fopen(filepath, "a");
-	if(fd) {
+	fd_tmp = fopen(filepath, "a");
+	if(fd_tmp) {
 		if(strcmp(cache, cacheTotale) == 0)
-			fprintf(fd, "%s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
+			fprintf(fd_tmp, "%s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
 					elab.r_date, quantity);
 		if(strcmp(cache, cacheVariazione) == 0)
-			fprintf(fd, "%s %s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
+			fprintf(fd_tmp, "%s %s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
 					elab.r_date, date, quantity);
-		fclose(fd);
+		fclose(fd_tmp);
 	}
 }
 
 int searchInCache(char cache[], int caso) {	
 	createFilePath(filepath, cache);
-	fd = fopen(filepath, "r");
-	if(fd) {
+	fd_tmp = fopen(filepath, "r");
+	if(fd_tmp) {
 		if(strcmp(cache, cacheTotale) == 0) {
 			switch(caso) {
 				case 0:
-					while(fscanf(fd, "%s %s %s %s %i\n", &cache_entry.aggr, 
+					while(fscanf(fd_tmp, "%s %s %s %s %i\n", &cache_entry.aggr, 
 							&cache_entry.type, &cache_entry.p_date, 
 							&cache_entry.r_date, &cache_entry.result) != EOF) 
 					{
@@ -496,13 +494,13 @@ int searchInCache(char cache[], int caso) {
 						{
 							//stampa a video
 							printf("TOTALE: %i\n", cache_entry.result);
-							fclose(fd);
+							fclose(fd_tmp);
 							return 1;
 						}
 					}
 					break;
 				case 1:
-					while(fscanf(fd, "%s %s %s %s %i\n", &cache_entry.aggr, 
+					while(fscanf(fd_tmp, "%s %s %s %s %i\n", &cache_entry.aggr, 
 							&cache_entry.type, &cache_entry.p_date, 
 							&cache_entry.r_date, &cache_entry.result) != EOF) 
 					{
@@ -512,8 +510,8 @@ int searchInCache(char cache[], int caso) {
 							(strcmp(cache_entry.r_date, peer_req.r_date) == 0)) 
 						{
 							//scrive risultato nel buffer per REPLY_DATA
-							sprintf(buffer + strlen(buffer), "%i", cache_entry.result);
-							fclose(fd);
+							sprintf(buffer + strlen(buffer), " %i", cache_entry.result);
+							fclose(fd_tmp);
 							return 1;
 						}
 					}
@@ -526,7 +524,7 @@ int searchInCache(char cache[], int caso) {
 			found = 0;
 			switch(caso) {
 				case 0:
-					while(fprintf(fd, "%s %s %s %s %s %i\n", &cache_entry.aggr,
+					while(fprintf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
 					&cache_entry.type, &cache_entry.p_date, &cache_entry.r_date,
 					&cache_entry.date, &cache_entry.result) != EOF) 
 					{
@@ -538,16 +536,16 @@ int searchInCache(char cache[], int caso) {
 							//stampa a video
 							found = 1;
 							printf("Variazione: %s %i\n", cache_entry.date, cache_entry.result);
-							fclose(fd);
+							fclose(fd_tmp);
 						}
 					}
 					if(found == 1) {
-						fclose(fd);
+						fclose(fd_tmp);
 						return 1;
 					}	
 					break;
 				case 1:
-					while(fprintf(fd, "%s %s %s %s %s %i\n", &cache_entry.aggr,
+					while(fprintf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
 					&cache_entry.type, &cache_entry.p_date, &cache_entry.r_date,
 					&cache_entry.date, &cache_entry.result) != EOF) 
 					{
@@ -559,11 +557,11 @@ int searchInCache(char cache[], int caso) {
 							//scrive risultato nel buffer per REPLY_DATA
 							found = 1;
 							sprintf(buffer+strlen(buffer), " %s %i", cache_entry.date, cache_entry.result);
-							fclose(fd);
+							fclose(fd_tmp);
 						}
 					}
 					if(found == 1) {
-						fclose(fd);
+						fclose(fd_tmp);
 						return 1;
 					}	
 					break;
@@ -571,7 +569,7 @@ int searchInCache(char cache[], int caso) {
 					break;
 			}
 		}
-		fclose(fd);
+		fclose(fd_tmp);
 	}
 	return 0;
 }
@@ -784,6 +782,7 @@ printf("FILE NON PRESENTE\n");
 			token = strtok(NULL, "-");
 			while(token != NULL)
 			{
+printf("P WHILE TOKEN: %s\n", token);
 				sscanf(token, "%s %i %i", &DS_info.date, &DS_info.numPeerN, &DS_info.numPeerT);
 //printf("DS_INFO %s %i %i\n", DS_info.str, DS_info.nuoviCasi, DS_info.tamponi);
 //printf("FILENAME %s\n\n", filename_tmp);
@@ -810,12 +809,15 @@ printf("FILE PRESENTE\n");
 			//leggo il totale dal file
 			token = strtok(NULL, "-");
 			while(token != NULL) {
-				if(fscanf(fd_tmp, "%s %i\n",				//se il file è non vuoto
-					&entry_tmp.type, &entry_tmp.quantity) != EOF) 
+printf("NP WHILE TOKEN: %s\n", token);
+				fseek(fd_tmp, 0, SEEK_END);
+				if(ftell(fd_tmp) > 0)		//se il file è non vuoto
 				{
 					sscanf(token, "%s %i %i", &DS_info.date, 
 							&DS_info.numPeerN, &DS_info.numPeerT);
+printf("DS_INFO: %s %i %i\n", DS_info.date, DS_info.numPeerN, DS_info.numPeerT);
 					if(strcmp(filename_tmp, DS_info.date) == 0) {	//data in risultati DS 
+printf("SONO UGUALIIII\n");
 						if((strcmp(elab.type, "N") == 0) && 
 							(DS_info.numPeerN > 1))
 						{ 
@@ -824,8 +826,6 @@ printf("CASO N > 1\n");
 							flooding = 1;
 							return;
 						}
-					}
-					if(strcmp(filename_tmp, DS_info.date) == 0) {
 						if((strcmp(elab.type, "T") == 0) && 
 						(DS_info.numPeerT > 1))
 						{
@@ -924,6 +924,7 @@ int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
 	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
+	p = malloc(sizeof(struct DataToSend));
 	store.num = 0;
 	store.list = NULL;
 	if((tmp_port == NULL) || (token == NULL)){
@@ -1016,8 +1017,9 @@ int main(int argc, char* argv[]){
 
 			if(strcmp(command, "REPLY_DATA") == 0) {
 				close_neig_response++;
+				strcpy(buffer, input);
 				token = strtok(buffer, " ");	//token = "REPLY_DATA"
-				token = strtok(NULL, " ");
+				token = strtok(NULL, "\0");
 				if(token != NULL) {	//il vicino aveva il risultato
 printf("IL VICINO HA I DATI\n");
 					//stampo dati
@@ -1091,8 +1093,9 @@ printf("SONO SOLO DUE\n");
 
 						//se ha entry aggiunge la propria porta e salva il 
 						//risultato per dopo
+						initCaseVariables(peer_req.p_date, peer_req.r_date);
 						if(strcmp(peer_req.aggr,"totale") == 0) {
-printf("CALCOLO TOTALE\n");
+printf("CALCOLO TOTALE\n");							
 							getLocalTotal(1, peer_req.type);
 						}
 						if(strcmp(peer_req.aggr,"variazione") == 0) {
@@ -1244,9 +1247,11 @@ printf("ALTRIMENTI\n");
 			if(strcmp(command, "REPLY_ENTRIES") == 0) {
 
 				if(strcmp(elab.aggr, "totale") == 0) {
+					initCaseVariables(elab.p_date, elab.r_date);
 					getLocalTotal(2, elab.type);
 				}
 				if(strcmp(elab.aggr, "variazione") == 0) {
+					initCaseVariables(elab.p_date, elab.r_date);
 					getLocalVariation(2, elab.type);
 				}
 			}
