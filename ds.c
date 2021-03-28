@@ -529,11 +529,11 @@ int main(int argc, char* argv[]) {
 				//conversione date da cercare
 				if(strcmp(second_arg, "*") != 0) {
 					strptime(second_arg, "%d:%m:%Y", &dateToConvert);
-					min_date_given = mktime(&dateToConvert);
+					min_date_given = mktime(&dateToConvert)+TZ;
 				}
 				if(strcmp(third_arg, "*") != 0) {
 					strptime(third_arg, "%d:%m:%Y", &dateToConvert);
-					max_date_given = mktime(&dateToConvert);
+					max_date_given = mktime(&dateToConvert)+TZ;
 				}
 
 				fclose(fd);
@@ -558,7 +558,7 @@ int main(int argc, char* argv[]) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
-							date_tmp = mktime(&dateToConvert);
+							date_tmp = mktime(&dateToConvert)+TZ;
 
 							if(difftime(min_date_given, date_tmp) <= 0) {
 								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
@@ -574,7 +574,7 @@ int main(int argc, char* argv[]) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
-							date_tmp = mktime(&dateToConvert);
+							date_tmp = mktime(&dateToConvert)+TZ;
 							if(difftime(max_date_given, date_tmp) >= 0) 
 							{
 								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
@@ -591,7 +591,7 @@ int main(int argc, char* argv[]) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
-							date_tmp = mktime(&dateToConvert);
+							date_tmp = mktime(&dateToConvert)+TZ;
 							if((difftime(min_date_given, date_tmp) <= 0) && 
 							(difftime(max_date_given, date_tmp) >= 0)) 
 							{

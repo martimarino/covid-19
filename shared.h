@@ -9,4 +9,5 @@
 #define DATE_LEN	  11
 #define ARRAY_DIM     10
 #define POLLING_TIME  5
+#define TZ            3600
 

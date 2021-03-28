@@ -146,6 +146,7 @@ struct StoredResults
 struct DataToSend *p;
 int my_request, flooded = 0, q;
 char di[DATE_LEN+DATE_LEN];
+char variation[BUFFER_LEN];
 
 
 void closingActions() {	//azioni da compiere quando un peer termina
@@ -387,21 +388,30 @@ struct tm* nextDay (struct tm *today) {
 	tmpDate->tm_hour = 0;
 
 	monthDays = daysInAMonth(atoi(mm)); 
-	if(tmpDate->tm_mday != monthDays) {
-		tmpDate->tm_mday = atoi(dd)+1;		
+//printf("MONTHDAYS: %i\n", monthDays);
+//printf("today  ->  %i:%i:%i\n", today->tm_mday, today->tm_mon, today->tm_year);
+//printf("dd mm YY  ->  %i:%i:%i\n", atoi(dd), atoi(mm), atoi(YY));
+//printf("tempDate  ->  %i:%i:%i\n", tmpDate->tm_mday, tmpDate->tm_mon, tmpDate->tm_year);
+
+	if(today->tm_mday != monthDays) {
+//printf("CASO 1\n");
+		tmpDate->tm_mday = atoi(dd)+1;	
 		tmpDate->tm_mon = atoi(mm)-1;  
 		tmpDate->tm_year = atoi(YY)-1900;  
 	}
-	if(tmpDate->tm_mday == monthDays+1) {
+	if(today->tm_mday == monthDays) {
+//printf("CASO 2\n");
 		tmpDate->tm_mday = 1;
 		tmpDate->tm_mon = atoi(mm);
 		tmpDate->tm_year = atoi(YY)-1900;
 	}
-	if((tmpDate->tm_mon == 11) && (tmpDate->tm_mday-1 == 31)) {
+	if((today->tm_mon == 11) && (today->tm_mday == 31)) {
+//printf("CASO 3\n");
 		tmpDate->tm_mday = 1;
 		tmpDate->tm_mon = 0;
 		tmpDate->tm_year = atoi(YY)+1-1900;
 	}
+//printf("dd:mm:YY  ->  %i:%i:%i\n", tmpDate->tm_mday, tmpDate->tm_mon, tmpDate->tm_year);
 	return tmpDate;
 }
 
@@ -470,8 +480,8 @@ void saveInCache (char cache[], char date[], int quantity) {
 			fprintf(fd_tmp, "%s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
 					elab.r_date, quantity);
 		if(strcmp(cache, cacheVariazione) == 0)
-			fprintf(fd_tmp, "%s %s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
-					elab.r_date, date, quantity);
+			fprintf(fd_tmp, "%s %s %s %s %s\n", elab.aggr, elab.type, elab.p_date,
+					elab.r_date, date);
 		fclose(fd_tmp);
 	}
 }
@@ -482,7 +492,7 @@ int searchInCache(char cache[], int caso) {
 	if(fd_tmp) {
 		if(strcmp(cache, cacheTotale) == 0) {
 			switch(caso) {
-				case 0:
+				case 0:	//cerca e se trova stampa a video
 					while(fscanf(fd_tmp, "%s %s %s %s %i\n", &cache_entry.aggr, 
 							&cache_entry.type, &cache_entry.p_date, 
 							&cache_entry.r_date, &cache_entry.result) != EOF) 
@@ -499,7 +509,7 @@ int searchInCache(char cache[], int caso) {
 						}
 					}
 					break;
-				case 1:
+				case 1:	//cerca e se trova scrive nel buffer
 					while(fscanf(fd_tmp, "%s %s %s %s %i\n", &cache_entry.aggr, 
 							&cache_entry.type, &cache_entry.p_date, 
 							&cache_entry.r_date, &cache_entry.result) != EOF) 
@@ -575,28 +585,32 @@ int searchInCache(char cache[], int caso) {
 }
 
 void getLocalTotal(int caso, char type[]) {
+printf("------------\n");
 	found = 0;
 	tot_tmp.nuoviCasi = 0;
 	tot_tmp.tamponi = 0;
 	while(difftime(minDate, maxDate) <= 0) {
+printf("MinDate: %s MaxDate: %s\n", ctime(&minDate), ctime(&maxDate));
 		fd_tmp = fopen(filepath_tmp, "r");
 		if(fd_tmp != NULL) {
 			while(fscanf(fd_tmp, "%s %i\n",				//per tutti i dati del file
 					&entry_tmp.type, &entry_tmp.quantity) != EOF) 
-			{printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
+			{
+printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
 				if(strcmp(entry_tmp.type, "N") == 0) 
 					tot_tmp.nuoviCasi += entry_tmp.quantity;
 				if(strcmp(entry_tmp.type, "T") == 0)
 					tot_tmp.tamponi += entry_tmp.quantity;
 			}
 			fclose(fd_tmp);
-		}printf("TOT: %i %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
+		}
+printf("TOT: %i %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
 		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		nextDate = &dateToConvert;
 		nextDate = nextDay(nextDate);
 		dateToConvert = *nextDate;
-		minDate = mktime(&dateToConvert);
-		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
+		minDate = mktime(&dateToConvert)+TZ;
+		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", nextDate);
 		//aggiorno filepath
 		createFilePath(filepath_tmp, filename_tmp);
 printf("NUOVO FILENAME %s\n", filename_tmp);
@@ -605,12 +619,12 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 		printf("TOTALE: ");
 		if(strcmp(type, "N") == 0) {
 			printf("%i\n", tot_tmp.nuoviCasi);
-			if(strcmp(elab.r_date, "-") != 0)
+			if(strcmp(elab.r_date, "*") != 0)
 				saveInCache(cacheTotale, "", tot_tmp.nuoviCasi);
 		}
 		if(strcmp(type, "T") == 0) {
 			printf("%i\n", tot_tmp.tamponi);
-			if(strcmp(elab.r_date, "-") != 0)
+			if(strcmp(elab.r_date, "*") != 0)
 				saveInCache(cacheTotale, "", tot_tmp.tamponi);
 		}	
 	}
@@ -619,22 +633,21 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 		if((tot_tmp.nuoviCasi > 0) || (tot_tmp.tamponi > 0)) {
 			p = store.list;
 			if(p == NULL) {
-printf("M_ALLOC IN TESTA\n");
+//printf("M_ALLOC IN TESTA\n");
 				p = malloc(sizeof(struct DataToSend));
-				store.num++; 
 			} else {
 				while(p->next != NULL) 
 					p = p->next;
 				p->next = malloc(sizeof(struct DataToSend));
 				p = p->next;
-				store.num++;
 			}
+			store.num++;
 			p->id = atoi(first_arg); 
 			strcpy(p->aggr, peer_req.aggr);
 			strcpy(p->type, peer_req.type);
 			strcpy(p->p_date, peer_req.p_date);
 			strcpy(p->r_date, peer_req.r_date);
-			p->total = tot_tmp.nuoviCasi;printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r_date, p->total);
+//printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r_date, p->total);
 			p->next = NULL;
 			if(!store.list)
 				store.list = p;
@@ -663,23 +676,20 @@ printf("M_ALLOC IN TESTA\n");
 }
 
 void getLocalVariation(int caso, char type[]){
-	found = 0;
-	tot_tmp.nuoviCasi = -1;
-	tot_tmp.tamponi = -1;
-	var_tmp.nuoviCasi = 0;
-	var_tmp.tamponi = 0;
 	strcpy(filename_prec, filename_tmp);
 	while(difftime(minDate, maxDate) <= 0) {
 		fd_tmp = fopen(filepath_tmp, "r");
 		if(fd_tmp != NULL) {
 			tot_tmp.nuoviCasi = var_tmp.nuoviCasi;	
 			tot_tmp.tamponi = var_tmp.tamponi; 
+			var_tmp.nuoviCasi = var_tmp.tamponi = 0;
 			while(fscanf(fd_tmp, "%s %i\n",				//per tutti i dati del file
-					&entry_tmp.type, &entry_tmp.quantity) != EOF) 
+					&entry_tmp.type, &entry_tmp.quantity) != EOF)
 			{
+//printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
 				if(strcmp(entry_tmp.type, "N") == 0)
 					var_tmp.nuoviCasi += entry_tmp.quantity;
-				if(strcmp(type, "T") == 0) 
+				if(strcmp(entry_tmp.type, "T") == 0) 
 					var_tmp.tamponi += entry_tmp.quantity;
 			}
 			fclose(fd_tmp);
@@ -688,8 +698,9 @@ void getLocalVariation(int caso, char type[]){
 			var_tmp.nuoviCasi = 0;
 			var_tmp.tamponi = 0;
 		}
-
-		if(!((tot_tmp.nuoviCasi == tot_tmp.tamponi) && (tot_tmp.nuoviCasi == -1))){
+//printf("VAR N %i VAR T %i\n", var_tmp.nuoviCasi, var_tmp.tamponi);
+//printf("TOT N %i VAR T %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
+		if(strcmp(filename_prec, filename_tmp) != 0){
 			sprintf(dateInterval, "%s-%s", filename_prec, filename_tmp);
 			if(caso == 0) {
 				if(strcmp(type, "N") == 0) {
@@ -705,53 +716,37 @@ void getLocalVariation(int caso, char type[]){
 						saveInCache(cacheVariazione, dateInterval, i);
 				}
 			}
-			if(caso == 1) {
-				p = store.list;
-				for(i = 0; i < store.num; i++) {
-					if(p == NULL) {
-						p->next = malloc(sizeof(struct DataToSend));
-						p = p->next;
-						store.num++;
-						break;
-					}
-					p = store.list->next;
-				}
-				p->id = atoi(first_arg);
-				strcpy(p->aggr, peer_req.aggr);
-				strcpy(p->type, peer_req.type);
-				strcpy(p->p_date, peer_req.p_date);
-				strcpy(p->r_date, peer_req.r_date);
-				p->next = NULL;
-				
+			if(caso == 1) {				
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi;
-					sprintf(p->variation+strlen(p->variation), "-%s %i", dateInterval, i);
+					sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
 				}
-				if(strcmp(type, "N") == 0) {
-					i = tot_tmp.nuoviCasi-var_tmp.tamponi;
-					sprintf(p->variation+strlen(p->variation), "-%s %i", dateInterval, i);
+				if(strcmp(type, "T") == 0) {
+					i = tot_tmp.tamponi-var_tmp.tamponi;
+					sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
 				}
 			}
 			if(caso == 2) {
 				strcpy(buffer_tmp, input);
-				token = strtok(buffer_tmp, "-");  //elimina REPLY_ENTRIES e id		
-				while (token != NULL) {
+				token = strtok(buffer_tmp, "/");  //elimina REPLY_ENTRIES e id		
+				token = strtok(NULL, "/");
+				while (token != NULL) {  //preleva dato [data quantità]
 					q = 0;
-					token = strtok(NULL, "-");	//preleva dato [data quantità]
-					sscanf(token, "%s %i", di, q);
-					if(strcmp(di, dateInterval) != 0)
-						q = 0;
-				}				
+					sscanf(token, "%s %i", &di, &q);
+					if(strcmp(di, dateInterval) == 0)
+						break;
+					token = strtok(NULL, "/");
+				}			
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi+q;
 					printf("Variazione %s: %i\n", dateInterval, i);
-					if(strcmp(elab.r_date, "-") != 0)
+					if(strcmp(elab.r_date, "*") != 0)
 						saveInCache(cacheVariazione, dateInterval, i);
 				}
 				if(strcmp(type, "T") == 0) {
 					i = tot_tmp.tamponi-var_tmp.tamponi+q;
 					printf("Variazione %s: %i\n", dateInterval, i);
-					if(strcmp(elab.r_date, "-") != 0)
+					if(strcmp(elab.r_date, "*") != 0)
 						saveInCache(cacheVariazione, dateInterval, i);
 				}
 			}
@@ -762,13 +757,37 @@ void getLocalVariation(int caso, char type[]){
 		nextDate = &dateToConvert;
 		nextDate = nextDay(nextDate);
 		dateToConvert = *nextDate;
-		minDate = mktime(&dateToConvert);
-		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
+		minDate = mktime(&dateToConvert)+TZ;
+		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", nextDate);
 		createFilePath(filepath_tmp, filename_tmp);
-//printf("NUOVO FILENAME %s\n", filename_tmp);
+printf("NUOVO FILENAME %s\n", filename_tmp);
 	}
-	if(found == 1)
-		sprintf(buffer+strlen(buffer), " %s", my_port);
+	if((caso == 1) && (strlen(variation) > 0)) {
+		p = store.list;
+		if(p == NULL) {
+			p = malloc(sizeof(struct DataToSend));
+			printf("ALLOCO IN TESTA\n");
+		}
+		else {
+			while(p->next)
+				p = p->next;
+			p->next = malloc(sizeof(struct DataToSend));
+			p = p->next;
+			printf("ALLOCO IN CODA\n");
+		}
+		store.num++;
+		p->id = atoi(first_arg);
+		strcpy(p->aggr, peer_req.aggr);
+		strcpy(p->type, peer_req.type);
+		strcpy(p->p_date, peer_req.p_date);
+		strcpy(p->r_date, peer_req.r_date);
+		strcpy(p->variation, variation);
+		p->next = NULL;
+		printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r_date, p->variation);
+		if(!store.list)
+			store.list = p;
+	}
+
 }
 
 void floodingToDo() { 
@@ -782,10 +801,9 @@ printf("FILE NON PRESENTE\n");
 			token = strtok(NULL, "-");
 			while(token != NULL)
 			{
-printf("P WHILE TOKEN: %s\n", token);
+//printf("P WHILE TOKEN: %s\n", token);
 				sscanf(token, "%s %i %i", &DS_info.date, &DS_info.numPeerN, &DS_info.numPeerT);
-//printf("DS_INFO %s %i %i\n", DS_info.str, DS_info.nuoviCasi, DS_info.tamponi);
-//printf("FILENAME %s\n\n", filename_tmp);
+//printf("DS_INFO %s %i %i\n", DS_info.date, DS_info.numPeerN, DS_info.numPeerT);
 				if(strcmp(filename_tmp, DS_info.date) == 0) { //data nei risultati del DS
 					if((strcmp(elab.type, "N") == 0) && 
 					(DS_info.numPeerN > 0))			//qualcuno ha registrato dati quel giorno
@@ -809,15 +827,15 @@ printf("FILE PRESENTE\n");
 			//leggo il totale dal file
 			token = strtok(NULL, "-");
 			while(token != NULL) {
-printf("NP WHILE TOKEN: %s\n", token);
+//printf("NP WHILE TOKEN: %s\n", token);
 				fseek(fd_tmp, 0, SEEK_END);
 				if(ftell(fd_tmp) > 0)		//se il file è non vuoto
 				{
 					sscanf(token, "%s %i %i", &DS_info.date, 
 							&DS_info.numPeerN, &DS_info.numPeerT);
-printf("DS_INFO: %s %i %i\n", DS_info.date, DS_info.numPeerN, DS_info.numPeerT);
+//printf("DS_INFO: %s %i %i\n", DS_info.date, DS_info.numPeerN, DS_info.numPeerT);
 					if(strcmp(filename_tmp, DS_info.date) == 0) {	//data in risultati DS 
-printf("SONO UGUALIIII\n");
+//printf("SONO UGUALI\n");
 						if((strcmp(elab.type, "N") == 0) && 
 							(DS_info.numPeerN > 1))
 						{ 
@@ -843,12 +861,13 @@ printf("CASO T > 1\n");
 		
 		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		nextDate = &dateToConvert;
+printf("FILENAME %s\n", filename_tmp);
 		nextDate = nextDay(nextDate);
 		dateToConvert = *nextDate;
-		minDate = mktime(&dateToConvert);
-		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", &dateToConvert);
+		minDate = mktime(&dateToConvert)+TZ;
+		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", nextDate);
 		createFilePath(filepath_tmp, filename_tmp);
-printf("NUOVO FILENAME %s\n", filename_tmp);
+printf("NUOVO FILENAME %s\n\n", filename_tmp);
 		//ricopio la lista del DS
 		strcpy(buffer_tmp, buffer);
 	}
@@ -857,6 +876,8 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 void initCaseVariables(char dateP[], char dateR[]) {
 //percorso del file da aprire
 	strcpy(filename_tmp, dateP);
+//printf("DATETOCONVERT: %i %i %i\n", dateToConvert.tm_hour, dateToConvert.tm_min, dateToConvert.tm_sec);
+dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 
 	//caso *,*
 	if((strcmp(dateP, "*") == 0) && (strcmp(dateR, "*") == 0)) {
@@ -914,9 +935,12 @@ void initCaseVariables(char dateP[], char dateR[]) {
 
 		//creo le variaibli time_t per il confronto
 		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
+//printf("DATETOCONVERT: %i %i %i\n", dateToConvert.tm_hour, dateToConvert.tm_min, dateToConvert.tm_sec);
 		minDate = mktime(&dateToConvert);
+//printf("MIN DATE: %s\n", ctime(&minDate));
 		strptime(dateR, "%d:%m:%Y", &dateToConvert);
 		maxDate = mktime(&dateToConvert);
+//printf("MAX DATE: %s\n", ctime(&maxDate));
 	}
 }
 
@@ -948,7 +972,7 @@ int main(int argc, char* argv[]){
 
 	srand(time(NULL));
 	createRegisterName();
-	strcpy(inizio_pandemia, "01:01:2021");
+	strcpy(inizio_pandemia, "01:10:2020");
 	strptime(inizio_pandemia, "%d:%m:%Y", &dateToConvert);
 	beginningDate = mktime(&dateToConvert);
 
@@ -1025,7 +1049,7 @@ printf("IL VICINO HA I DATI\n");
 					//stampo dati
 					if(strcmp(elab.aggr, "totale") == 0) {
 						sscanf(token, "%i", &res.result);
-						if(strcmp(elab.r_date, "-") != 0)
+						if(strcmp(elab.r_date, "*") != 0)
 							saveInCache(cacheTotale, "", res.result);
 						printf("Totale: %i\n", res.result);
 					}
@@ -1093,7 +1117,6 @@ printf("SONO SOLO DUE\n");
 
 						//se ha entry aggiunge la propria porta e salva il 
 						//risultato per dopo
-						initCaseVariables(peer_req.p_date, peer_req.r_date);
 						if(strcmp(peer_req.aggr,"totale") == 0) {
 printf("CALCOLO TOTALE\n");							
 							getLocalTotal(1, peer_req.type);
@@ -1206,7 +1229,7 @@ printf("CALCOLO VARIAZIONE\n");
 				p = store.list;
 				if(p->id == atoi(first_arg)) {			//risultato in testa
 printf("RISULTATO IN TESTA\n");
-					sprintf(buffer, "REPLY_ENTRIES %i ", p->id);
+					sprintf(buffer, "REPLY_ENTRIES %i", p->id);
 					if(strcmp(p->aggr, "totale") == 0) {
 						sprintf(buffer+strlen(buffer), "%i", p->total);
 					}
