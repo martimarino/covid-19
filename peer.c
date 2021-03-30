@@ -37,6 +37,7 @@ char sixth_arg[BUFFER_LEN];
 //variabili per prelevare i campi del periodo
 int valid_period = 1;
 struct Request {
+	int req_id;
 	char aggr[DATE_LEN];
 	char type[2];
 	char p_date[DATE_LEN];
@@ -115,7 +116,7 @@ struct Cache {
 } cache_entry;
 
 struct Result {
-	char date[DATE_LEN];
+	char date[BUFFER_LEN];
 	int result;
 } res;       
 
@@ -144,7 +145,7 @@ struct StoredResults
 	struct DataToSend *list;
 } store;
 struct DataToSend *p;
-int my_request, flooded = 0, q;
+int flooded = 0, q, t;
 char di[DATE_LEN+DATE_LEN];
 char variation[BUFFER_LEN];
 
@@ -250,7 +251,7 @@ int parseString(char buffer[]) {	//separa gli argomenti di un comando
 				sscanf(token, "%s", &sixth_arg);
 				break;
 			default:
-				printf("Comando non riconosciuto\n");
+//				printf("Comando non riconosciuto\n");
 				break;
 		}
 		token = strtok(NULL, " ");
@@ -480,17 +481,19 @@ void saveInCache (char cache[], char date[], int quantity) {
 			fprintf(fd_tmp, "%s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
 					elab.r_date, quantity);
 		if(strcmp(cache, cacheVariazione) == 0)
-			fprintf(fd_tmp, "%s %s %s %s %s\n", elab.aggr, elab.type, elab.p_date,
-					elab.r_date, date);
+			fprintf(fd_tmp, "%s %s %s %s %s %i\n", elab.aggr, elab.type, elab.p_date,
+					elab.r_date, date, quantity);
 		fclose(fd_tmp);
 	}
 }
 
 int searchInCache(char cache[], int caso) {	
+	printf("RICERCA IN ");
 	createFilePath(filepath, cache);
 	fd_tmp = fopen(filepath, "r");
 	if(fd_tmp) {
 		if(strcmp(cache, cacheTotale) == 0) {
+			printf("TOTALE:TXT\n");
 			switch(caso) {
 				case 0:	//cerca e se trova stampa a video
 					while(fscanf(fd_tmp, "%s %s %s %s %i\n", &cache_entry.aggr, 
@@ -520,7 +523,7 @@ int searchInCache(char cache[], int caso) {
 							(strcmp(cache_entry.r_date, peer_req.r_date) == 0)) 
 						{
 							//scrive risultato nel buffer per REPLY_DATA
-							sprintf(buffer + strlen(buffer), " %i", cache_entry.result);
+							sprintf(buffer + strlen(buffer), "%i", cache_entry.result);
 							fclose(fd_tmp);
 							return 1;
 						}
@@ -531,10 +534,11 @@ int searchInCache(char cache[], int caso) {
 			}
 		}
 		if(strcmp(cache, cacheVariazione) == 0) {
+			printf("VARIAZIONE.TXT\n");
 			found = 0;
 			switch(caso) {
 				case 0:
-					while(fprintf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
+					while(fscanf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
 					&cache_entry.type, &cache_entry.p_date, &cache_entry.r_date,
 					&cache_entry.date, &cache_entry.result) != EOF) 
 					{
@@ -546,7 +550,6 @@ int searchInCache(char cache[], int caso) {
 							//stampa a video
 							found = 1;
 							printf("Variazione: %s %i\n", cache_entry.date, cache_entry.result);
-							fclose(fd_tmp);
 						}
 					}
 					if(found == 1) {
@@ -555,7 +558,7 @@ int searchInCache(char cache[], int caso) {
 					}	
 					break;
 				case 1:
-					while(fprintf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
+					while(fscanf(fd_tmp, "%s %s %s %s %s %i\n", &cache_entry.aggr,
 					&cache_entry.type, &cache_entry.p_date, &cache_entry.r_date,
 					&cache_entry.date, &cache_entry.result) != EOF) 
 					{
@@ -565,9 +568,8 @@ int searchInCache(char cache[], int caso) {
 							(strcmp(cache_entry.r_date, peer_req.r_date) == 0)) 
 						{
 							//scrive risultato nel buffer per REPLY_DATA
+							sprintf(buffer+strlen(buffer), "%s %i/", cache_entry.date, cache_entry.result);
 							found = 1;
-							sprintf(buffer+strlen(buffer), " %s %i", cache_entry.date, cache_entry.result);
-							fclose(fd_tmp);
 						}
 					}
 					if(found == 1) {
@@ -585,18 +587,17 @@ int searchInCache(char cache[], int caso) {
 }
 
 void getLocalTotal(int caso, char type[]) {
-printf("------------\n");
 	found = 0;
 	tot_tmp.nuoviCasi = 0;
 	tot_tmp.tamponi = 0;
 	while(difftime(minDate, maxDate) <= 0) {
-printf("MinDate: %s MaxDate: %s\n", ctime(&minDate), ctime(&maxDate));
+//printf("MinDate: %s MaxDate: %s\n", ctime(&minDate), ctime(&maxDate));
 		fd_tmp = fopen(filepath_tmp, "r");
 		if(fd_tmp != NULL) {
 			while(fscanf(fd_tmp, "%s %i\n",				//per tutti i dati del file
 					&entry_tmp.type, &entry_tmp.quantity) != EOF) 
 			{
-printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
+//printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
 				if(strcmp(entry_tmp.type, "N") == 0) 
 					tot_tmp.nuoviCasi += entry_tmp.quantity;
 				if(strcmp(entry_tmp.type, "T") == 0)
@@ -604,7 +605,7 @@ printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
 			}
 			fclose(fd_tmp);
 		}
-printf("TOT: %i %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
+//printf("TOT: %i %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
 		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		nextDate = &dateToConvert;
 		nextDate = nextDay(nextDate);
@@ -634,15 +635,15 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 			p = store.list;
 			if(p == NULL) {
 //printf("M_ALLOC IN TESTA\n");
-				p = malloc(sizeof(struct DataToSend));
+				p = (struct DataToSend *)malloc(sizeof(struct DataToSend)*10);
 			} else {
 				while(p->next != NULL) 
 					p = p->next;
-				p->next = malloc(sizeof(struct DataToSend));
+				p->next = (struct DataToSend *)malloc(sizeof(struct DataToSend));
 				p = p->next;
 			}
 			store.num++;
-			p->id = atoi(first_arg); 
+			p->id = peer_req.req_id; 
 			strcpy(p->aggr, peer_req.aggr);
 			strcpy(p->type, peer_req.type);
 			strcpy(p->p_date, peer_req.p_date);
@@ -677,6 +678,8 @@ printf("NUOVO FILENAME %s\n", filename_tmp);
 
 void getLocalVariation(int caso, char type[]){
 	strcpy(filename_prec, filename_tmp);
+	sprintf(variation, "");
+	tot_tmp.nuoviCasi = tot_tmp.tamponi = 0;
 	while(difftime(minDate, maxDate) <= 0) {
 		fd_tmp = fopen(filepath_tmp, "r");
 		if(fd_tmp != NULL) {
@@ -699,10 +702,10 @@ void getLocalVariation(int caso, char type[]){
 			var_tmp.tamponi = 0;
 		}
 //printf("VAR N %i VAR T %i\n", var_tmp.nuoviCasi, var_tmp.tamponi);
-//printf("TOT N %i VAR T %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
+//printf("TOT N %i TOT T %i\n", tot_tmp.nuoviCasi, tot_tmp.tamponi);
 		if(strcmp(filename_prec, filename_tmp) != 0){
 			sprintf(dateInterval, "%s-%s", filename_prec, filename_tmp);
-			if(caso == 0) {
+			if(caso  == 0) {
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi;
 					printf("Variazione %s: %i\n", dateInterval, i);
@@ -716,15 +719,17 @@ void getLocalVariation(int caso, char type[]){
 						saveInCache(cacheVariazione, dateInterval, i);
 				}
 			}
-			if(caso == 1) {				
+			if(caso == 1) {
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi;
-					sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
+					if(i != 0)
+						sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
 				}
 				if(strcmp(type, "T") == 0) {
 					i = tot_tmp.tamponi-var_tmp.tamponi;
-					sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
-				}
+					if(i != 0)
+						sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
+				}				
 			}
 			if(caso == 2) {
 				strcpy(buffer_tmp, input);
@@ -732,11 +737,13 @@ void getLocalVariation(int caso, char type[]){
 				token = strtok(NULL, "/");
 				while (token != NULL) {  //preleva dato [data quantità]
 					q = 0;
-					sscanf(token, "%s %i", &di, &q);
-					if(strcmp(di, dateInterval) == 0)
+					sscanf(token, "%s %i", &di, &t);
+					if(strcmp(di, dateInterval) == 0) {	//data presente in REPLY_ENTRIES message
+						q = t;
 						break;
+					} 
 					token = strtok(NULL, "/");
-				}			
+				}
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi+q;
 					printf("Variazione %s: %i\n", dateInterval, i);
@@ -760,30 +767,30 @@ void getLocalVariation(int caso, char type[]){
 		minDate = mktime(&dateToConvert)+TZ;
 		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", nextDate);
 		createFilePath(filepath_tmp, filename_tmp);
-printf("NUOVO FILENAME %s\n", filename_tmp);
+//printf("NUOVO FILENAME %s\n", filename_tmp);
 	}
 	if((caso == 1) && (strlen(variation) > 0)) {
 		p = store.list;
 		if(p == NULL) {
-			p = malloc(sizeof(struct DataToSend));
+			p = (struct DataToSend *)malloc(sizeof(struct DataToSend));
 			printf("ALLOCO IN TESTA\n");
 		}
 		else {
 			while(p->next)
 				p = p->next;
-			p->next = malloc(sizeof(struct DataToSend));
+			p->next = (struct DataToSend *)malloc(sizeof(struct DataToSend));
 			p = p->next;
 			printf("ALLOCO IN CODA\n");
 		}
 		store.num++;
-		p->id = atoi(first_arg);
+		p->id = peer_req.req_id;
 		strcpy(p->aggr, peer_req.aggr);
 		strcpy(p->type, peer_req.type);
 		strcpy(p->p_date, peer_req.p_date);
 		strcpy(p->r_date, peer_req.r_date);
 		strcpy(p->variation, variation);
 		p->next = NULL;
-		printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r_date, p->variation);
+printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r_date, p->variation);
 		if(!store.list)
 			store.list = p;
 	}
@@ -948,7 +955,7 @@ int main(int argc, char* argv[]){
 
 	tmp_port = (char*)malloc(sizeof(char)*ADDR_LEN);
 	token = (char*)malloc(sizeof(char)*BUFFER_LEN);
-	p = malloc(sizeof(struct DataToSend));
+	p = (struct DataToSend *)malloc(sizeof(struct DataToSend));
 	store.num = 0;
 	store.list = NULL;
 	if((tmp_port == NULL) || (token == NULL)){
@@ -1030,7 +1037,7 @@ int main(int argc, char* argv[]){
 				strcpy(peer_req.p_date, fourth_arg);
 				strcpy(peer_req.r_date, fifth_arg);
 				//se ho il dato in cache lo invio
-				sprintf(buffer, "REPLY_DATA");
+				sprintf(buffer, "REPLY_DATA ");
 				if(strcmp(peer_req.aggr, "totale") == 0)
 					searchInCache(cacheTotale, 1);
 				if(strcmp(peer_req.aggr, "variazione") == 0)
@@ -1043,36 +1050,40 @@ int main(int argc, char* argv[]){
 				close_neig_response++;
 				strcpy(buffer, input);
 				token = strtok(buffer, " ");	//token = "REPLY_DATA"
-				token = strtok(NULL, "\0");
+				if(strcmp(elab.aggr, "totale") == 0) 
+					token = strtok(NULL, " ");
+				if(strcmp(elab.aggr, "variazione") == 0)
+					token = strtok(NULL, "/");
 				if(token != NULL) {	//il vicino aveva il risultato
 printf("IL VICINO HA I DATI\n");
 					//stampo dati
 					if(strcmp(elab.aggr, "totale") == 0) {
 						sscanf(token, "%i", &res.result);
-						if(strcmp(elab.r_date, "*") != 0)
-							saveInCache(cacheTotale, "", res.result);
+						saveInCache(cacheTotale, "", res.result);
 						printf("Totale: %i\n", res.result);
 					}
 					if(strcmp(elab.aggr, "variazione") == 0) {
 						while(token != NULL) {
 							sscanf(token, "%s %i", &res.date, &res.result);
 							printf("Variazione %s: %i\n", res.date, res.result);
+							saveInCache(cacheVariazione, res.date, res.result);
+							token = strtok(NULL, "/");
 						}
 					}
 				} else {
 printf("IL VICINO NON HA I DATI\n");
-					my_request = rand();
+					elab.req_id = rand();
 					//se ha un vicino solo
 					if((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) || (strcmp(my_neighbors.right_neighbor_ip, "-") == 0)) {
 						if((strcmp(my_neighbors.left_neighbor_ip, "-") != 0) && (strcmp(my_neighbors.right_neighbor_ip, "-") == 0)) {
 							connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
-							sprintf(buffer, "FLOOD_FOR_ENTRIES %i L %s %s %s %s", my_request,
+							sprintf(buffer, "FLOOD_FOR_ENTRIES %i L %s %s %s %s", elab.req_id,
 									elab.aggr, elab.type, elab.p_date, elab.r_date);
 							send_(addr);
 						}
 						if((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) && (strcmp(my_neighbors.right_neighbor_ip, "-") != 0)) {
 							connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
-							sprintf(buffer, "FLOOD_FOR_ENTRIES %i R %s %s %s %s", my_request,
+							sprintf(buffer, "FLOOD_FOR_ENTRIES %i R %s %s %s %s", elab.req_id,
 									elab.aggr, elab.type, elab.p_date, elab.r_date);
 							send_(addr);	
 						}
@@ -1083,12 +1094,12 @@ printf("IL VICINO NON HA I DATI\n");
 							close_neig_response++;
 						else {
 							connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
-							sprintf(buffer, "FLOOD_FOR_ENTRIES %i L %s %s %s %s", my_request,
+							sprintf(buffer, "FLOOD_FOR_ENTRIES %i L %s %s %s %s", elab.req_id,
 									elab.aggr, elab.type, elab.p_date, elab.r_date);
 							send_(addr);
 						
 							connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
-							sprintf(buffer, "FLOOD_FOR_ENTRIES %i R %s %s %s %s", my_request,
+							sprintf(buffer, "FLOOD_FOR_ENTRIES %i R %s %s %s %s", elab.req_id,
 									elab.aggr, elab.type, elab.p_date, elab.r_date);
 							send_(addr);	
 		
@@ -1105,10 +1116,11 @@ printf("IL VICINO NON HA I DATI\n");
 					((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) && (strcmp(second_arg, "L") == 0)) ||
 					((strcmp(my_neighbors.right_neighbor_ip, "-") == 0) && (strcmp(second_arg, "R") == 0))) {
 printf("PRIMO A RISPONDERE\n");
-
 					if(((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) && (strcmp(second_arg, "L") == 0)) ||
 					((strcmp(my_neighbors.right_neighbor_ip, "-") == 0) && (strcmp(second_arg, "R") == 0))) {
 printf("SONO SOLO DUE\n");
+						peer_req.req_id = atoi(first_arg);
+						
 						strcpy(peer_req.aggr, third_arg);
 						strcpy(peer_req.type, fourth_arg);
 						strcpy(peer_req.p_date, fifth_arg);
@@ -1126,13 +1138,12 @@ printf("CALCOLO VARIAZIONE\n");
 							getLocalVariation(1, peer_req.type);
 						}	
 					}
-					
 					//cerco risultato
 					p = store.list;
 					if(p != NULL) {
-						if(p->id != atoi(first_arg)) {					
-							for(i = 0; i < store.num; i++)  {
-								if(p->id == atoi(first_arg))
+						if(p->id != peer_req.req_id) {					
+							while(p->next) {
+								if(p->id == peer_req.req_id)
 									break;
 								p = p->next;
 							}
@@ -1141,15 +1152,15 @@ printf("CALCOLO VARIAZIONE\n");
 					if (p != NULL)	{	//ho le entry
 printf("P != NULL\n");
 						if(strcmp(second_arg, "L") == 0) 
-							sprintf(buffer, "REPLY_FLOOD %i R %s", atoi(first_arg), my_port);
+							sprintf(buffer, "REPLY_FLOOD %i R %s", peer_req.req_id, my_port);
 						if(strcmp(second_arg, "R") == 0)
-							sprintf(buffer, "REPLY_FLOOD %i L %s", atoi(first_arg), my_port);
+							sprintf(buffer, "REPLY_FLOOD %i L %s", peer_req.req_id, my_port);
 					} else {
 printf("P == NULL\n");
 						if(strcmp(second_arg, "L") == 0) 
-							sprintf(buffer, "REPLY_FLOOD %i R", atoi(first_arg));
+							sprintf(buffer, "REPLY_FLOOD %i R", peer_req.req_id);
 						if(strcmp(second_arg, "R") == 0)
-							sprintf(buffer, "REPLY_FLOOD %i L", atoi(first_arg));					
+							sprintf(buffer, "REPLY_FLOOD %i L", peer_req.req_id);					
 					}
 					//scelta del destinatario
 					if((strcmp(second_arg, "L") == 0) && (strcmp(my_neighbors.right_neighbor_ip, "-") != 0))	
@@ -1189,23 +1200,23 @@ printf("CALCOLO VARIAZIONE\n");
 			}
 
 			if(strcmp(command, "REPLY_FLOOD") == 0) {
-				if(my_request == atoi(first_arg)) {
+				if(elab.req_id == atoi(first_arg)) {
 					//prelevo 
 					token = strtok(input, " ");
 					token = strtok(NULL, " ");
 					token = strtok(NULL, " ");
 					token = strtok(NULL, " ");
-					sprintf(buffer, "REQ_ENTRIES %i %s", my_request, my_port);
+					sprintf(buffer, "REQ_ENTRIES %i %s", elab.req_id, my_port);
 					while(token != NULL) {
 						connectToPeer(localhost, token);
-						sprintf(buffer, "REQ_ENTRIES %i %s", my_request, my_port);
+						sprintf(buffer, "REQ_ENTRIES %i %s", elab.req_id, my_port);
 						send_(addr);
 						token = strtok(NULL, " ");
 					}
 				} else {
 					strcpy(buffer, input);
 					for(i = 0; i < store.num; i++)  {
-						if(p->next->id == atoi(first_arg))
+						if(p->next->id == peer_req.req_id)
 							break;
 						p = p->next;
 					}
@@ -1231,7 +1242,7 @@ printf("CALCOLO VARIAZIONE\n");
 printf("RISULTATO IN TESTA\n");
 					sprintf(buffer, "REPLY_ENTRIES %i", p->id);
 					if(strcmp(p->aggr, "totale") == 0) {
-						sprintf(buffer+strlen(buffer), "%i", p->total);
+						sprintf(buffer+strlen(buffer), " %i", p->total);
 					}
 					if(strcmp(p->aggr, "variazione") == 0) {
 						sprintf(buffer+strlen(buffer), "%s", p->variation);
@@ -1254,7 +1265,10 @@ printf("ALTRIMENTI\n");
 				connectToPeer(localhost, second_arg);
 				send_(addr);
 				printf("STORE NUM: %i\n", store.num);
+				printf("STORE: \n\t%i\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%i\n", store.list->id, store.list->aggr, store.list->type, store.list->p_date, store.list->r_date, store.list->variation, store.list->total);
+
 				if(store.num == 1){
+					free(store.list->next);
 					free(store.list);
 					store.list = NULL;
 				}
@@ -1395,6 +1409,45 @@ printf("ALTRIMENTI\n");
 
 					receive_(srv_addr);
 					strcpy(buffer_tmp, buffer);
+/**/
+					if(strcmp(elab.aggr, "totale") == 0)
+						i = searchInCache(cacheTotale, 0);
+					if(strcmp(elab.aggr, "variazione") == 0)
+						i = searchInCache(cacheVariazione, 0);
+					if(i == 0){
+						initCaseVariables(elab.p_date, elab.r_date);
+						floodingToDo();
+						if(flooding == 0) {
+							if(strcmp(elab.aggr, "totale") == 0) {
+								initCaseVariables(elab.p_date, elab.r_date);
+								//calcolo dato e memorizzo il dato
+								getLocalTotal(0, elab.type);
+							}
+							if(strcmp(elab.aggr, "variazione") == 0) {
+								initCaseVariables(elab.p_date, elab.r_date);
+								getLocalVariation(0, elab.type);
+							}
+						}
+						if(flooding == 1) {
+							if((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) && (strcmp(my_neighbors.right_neighbor_ip, "-") == 0))
+								printf("No neighbors\n");
+							if(strcmp(my_neighbors.left_neighbor_ip, "-") != 0) {
+								connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
+								sprintf(buffer, "REQ_DATA %s %s %s %s %s", my_port, elab.aggr, elab.type, elab.p_date, elab.r_date);
+								send_(addr);
+	printf("INVIATO A LEFT: %s\n", my_neighbors.left_neighbor_port);
+							}
+							if(strcmp(my_neighbors.right_neighbor_ip, "-") != 0) {
+								connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+								sprintf(buffer, "REQ_DATA %s %s %s %s %s", my_port, elab.aggr, elab.type, elab.p_date, elab.r_date);
+								send_(addr);
+	printf("INVIATO A RIGHT %s\n", my_neighbors.right_neighbor_port);
+							}
+						}
+					}
+/**/
+
+/*
 
 					initCaseVariables(elab.p_date, elab.r_date);
 					floodingToDo();
@@ -1432,7 +1485,7 @@ printf("INVIATO A LEFT: %s\n", my_neighbors.left_neighbor_port);
 							send_(addr);
 printf("INVIATO A RIGHT %s\n", my_neighbors.right_neighbor_port);
 						}			
-					}					
+					}	*/				
 				}
 			}	
 
