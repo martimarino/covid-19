@@ -111,7 +111,7 @@ void ds_connect() {		//creazione socket
 void updateRegister() {
 	time(&now);
 	todayDateTime = localtime(&now);
-	strftime(DS_entry.date, sizeof(DS_entry.date), "%d:%m:%Y", todayDateTime);
+	strftime(DS_entry.date, sizeof(DS_entry.date), "%d_%m_%Y", todayDateTime);
 printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
 	fprintf(fd, "%s %i %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
 }
@@ -528,11 +528,11 @@ int main(int argc, char* argv[]) {
 			
 				//conversione date da cercare
 				if(strcmp(second_arg, "*") != 0) {
-					strptime(second_arg, "%d:%m:%Y", &dateToConvert);
+					strptime(second_arg, "%d_%m_%Y", &dateToConvert);
 					min_date_given = mktime(&dateToConvert)+TZ;
 				}
 				if(strcmp(third_arg, "*") != 0) {
-					strptime(third_arg, "%d:%m:%Y", &dateToConvert);
+					strptime(third_arg, "%d_%m_%Y", &dateToConvert);
 					max_date_given = mktime(&dateToConvert)+TZ;
 				}
 
@@ -557,7 +557,7 @@ int main(int argc, char* argv[]) {
 									&findEntry.num_peer_T) != EOF) {
 							
 							//conversione data prelevata
-							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert)+TZ;
 
 							if(difftime(min_date_given, date_tmp) <= 0) {
@@ -573,7 +573,7 @@ int main(int argc, char* argv[]) {
 									&findEntry.num_peer_T) != EOF) {
 							
 							//conversione data prelevata
-							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert)+TZ;
 							if(difftime(max_date_given, date_tmp) >= 0) 
 							{
@@ -590,7 +590,7 @@ int main(int argc, char* argv[]) {
 									&findEntry.num_peer_T) != EOF) {
 							
 							//conversione data prelevata
-							strptime(findEntry.date, "%d:%m:%Y", &dateToConvert);
+							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
 							date_tmp = mktime(&dateToConvert)+TZ;
 							if((difftime(min_date_given, date_tmp) <= 0) && 
 							(difftime(max_date_given, date_tmp) >= 0)) 
