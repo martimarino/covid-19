@@ -55,8 +55,8 @@ char right_port[PORT_LEN];
 
 struct Entry {
 	char date[11];
-	int num_peer_N;;
-	int num_peer_T;
+	int num_entry_N;;
+	int num_entry_T;
 } DS_entry;
 
 struct Entry findEntry;
@@ -112,8 +112,8 @@ void updateRegister() {
 	time(&now);
 	todayDateTime = localtime(&now);
 	strftime(DS_entry.date, sizeof(DS_entry.date), "%d_%m_%Y", todayDateTime);
-printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
-	fprintf(fd, "%s %i %i\n", DS_entry.date, DS_entry.num_peer_N, DS_entry.num_peer_T);
+printf("STRUCT: %s, %i, %i\n", DS_entry.date, DS_entry.num_entry_N, DS_entry.num_entry_T);
+	fprintf(fd, "%s %i %i\n", DS_entry.date, DS_entry.num_entry_N, DS_entry.num_entry_T);
 }
 
 int parse_string(char buffer[]) {	//separa gli argomenti di un comando
@@ -514,8 +514,8 @@ int main(int argc, char* argv[]) {
 
 			if(strcmp(command, "SOME_ENTRIES") == 0) {
 			
-				DS_entry.num_peer_N += atoi(first_arg);
-				DS_entry.num_peer_T += atoi(second_arg);
+				DS_entry.num_entry_N += atoi(first_arg);
+				DS_entry.num_entry_T += atoi(second_arg);
 				counter++;
 
 				if(counter == num_peer) {
@@ -544,17 +544,17 @@ int main(int argc, char* argv[]) {
 					//caso *,*
 					if((strcmp(second_arg, "*") == 0) && (strcmp(third_arg, "*") == 0)) {
 						while(fscanf(fd, "%s %i %i\n", &findEntry.date, 
-							&findEntry.num_peer_N, &findEntry.num_peer_T) != EOF)
+							&findEntry.num_entry_N, &findEntry.num_entry_T) != EOF)
 							
 							sprintf(buffer + strlen(buffer), "-%s %i %i", 
-									findEntry.date, findEntry.num_peer_N, findEntry.num_peer_T);
+									findEntry.date, findEntry.num_entry_N, findEntry.num_entry_T);
 					}	
 
 					//caso d:m:Y - *
 					if(strcmp(third_arg, "*") == 0) {
 
-						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
-									&findEntry.num_peer_T) != EOF) {
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_entry_N, 
+									&findEntry.num_entry_T) != EOF) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
@@ -562,15 +562,15 @@ int main(int argc, char* argv[]) {
 
 							if(difftime(min_date_given, date_tmp) <= 0) {
 								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
-										findEntry.num_peer_N, findEntry.num_peer_T);
+										findEntry.num_entry_N, findEntry.num_entry_T);
 							}
 						}
 					}
 
 					//caso * - d:m:Y
 					if(strcmp(second_arg, "*") == 0) {
-						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
-									&findEntry.num_peer_T) != EOF) {
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_entry_N, 
+									&findEntry.num_entry_T) != EOF) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
@@ -578,7 +578,7 @@ int main(int argc, char* argv[]) {
 							if(difftime(max_date_given, date_tmp) >= 0) 
 							{
 								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
-										findEntry.num_peer_N, findEntry.num_peer_T);
+										findEntry.num_entry_N, findEntry.num_entry_T);
 							}
 						}
 					}
@@ -586,8 +586,8 @@ int main(int argc, char* argv[]) {
 					//caso d:m:Y - d:m:Y
 					if((strcmp(second_arg, "*") != 0) && (strcmp(third_arg, "*") != 0)) {
 						printf("CASO data - data\n");
-						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_peer_N, 
-									&findEntry.num_peer_T) != EOF) {
+						while(fscanf(fd, "%s %i %i\n", &findEntry.date, &findEntry.num_entry_N, 
+									&findEntry.num_entry_T) != EOF) {
 							
 							//conversione data prelevata
 							strptime(findEntry.date, "%d_%m_%Y", &dateToConvert);
@@ -596,7 +596,7 @@ int main(int argc, char* argv[]) {
 							(difftime(max_date_given, date_tmp) >= 0)) 
 							{
 								sprintf(buffer + strlen(buffer), "-%s %i %i", findEntry.date, 
-										findEntry.num_peer_N, findEntry.num_peer_T);
+										findEntry.num_entry_N, findEntry.num_entry_T);
 							}
 						}
 					}
