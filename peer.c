@@ -131,7 +131,7 @@ char cacheTotale[] = "totale.txt";
 char cacheVariazione[] = "variazione.txt";
 struct DataToSend {
 	int id;
-	int num_entry;
+	int num_entries;
 	char aggr[BUFFER_LEN];
 	char type[BUFFER_LEN];
 	char p_date[BUFFER_LEN];
@@ -148,7 +148,7 @@ struct StoredResults
 struct DataToSend *p;
 int flooded = 0, q, t, got_data;
 int counter_left, counter_right, counter, tot_parziale;
-int entry_to_gain, entry_gained, num_entry;
+int entries_to_gain, entry_gained, num_entries, period_entries;
 char di[DATE_LEN+DATE_LEN], variation[BUFFER_LEN], peer_to_contact[BUFFER_LEN], var_parziale[BUFFER_LEN];
 
 void closingActions() {	//azioni da compiere quando un peer termina
@@ -594,7 +594,7 @@ int searchInCache(char cache[], int caso) {
 }
 
 void getLocalTotal(int caso, char type[]) { printf("GET LOCAL TOTAL \n");
-	num_entry = 0;
+	num_entries = 0;
 	tot_tmp.nuoviCasi = 0;
 	tot_tmp.tamponi = 0;
 	while(difftime(minDate, maxDate) <= 0) {
@@ -604,16 +604,16 @@ void getLocalTotal(int caso, char type[]) { printf("GET LOCAL TOTAL \n");
 			while(fscanf(fd_tmp, "%s %i\n",				//per tutti i dati del file
 					&entry_tmp.type, &entry_tmp.quantity) != EOF) 
 			{
-printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
+//printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
 				if((strcmp(entry_tmp.type, "N") == 0) && (strcmp(type, "N") == 0)) {
 					tot_tmp.nuoviCasi += entry_tmp.quantity;
-					num_entry++;
+					num_entries++;
 				}
 				if((strcmp(entry_tmp.type, "T") == 0) && (strcmp(type, "T") == 0)){
 					tot_tmp.tamponi += entry_tmp.quantity;
-					num_entry++;
+					num_entries++;
 				}
-printf("NUM ENTRY: %i\n", num_entry);
+//printf("NUM ENTRY: %i\n", num_entries);
 			}
 			fclose(fd_tmp);
 		}
@@ -657,7 +657,7 @@ printf("NUM ENTRY: %i\n", num_entry);
 			}
 			store.num++;
 			p->id = peer_req.req_id; 
-			p->num_entry = num_entry;
+			p->num_entries = num_entries;
 			strcpy(p->aggr, peer_req.aggr);
 			strcpy(p->type, peer_req.type);
 			strcpy(p->p_date, peer_req.p_date);
@@ -683,7 +683,7 @@ printf("NUM ENTRY: %i\n", num_entry);
 			tot_parziale += tot_tmp.tamponi;
 			printf("%i\n", tot_parziale);
 		}
-		if((strcmp(elab.r_date, "*") != 0) && (entry_gained == entry_to_gain))
+		if((strcmp(elab.r_date, "*") != 0) && (entry_gained == entries_to_gain))
 			saveInCache(cacheTotale, "", tot_parziale);
 	}
 }
@@ -765,20 +765,18 @@ void getLocalVariation(int caso, char type[]){   printf("GET LOCAL VARIATION\n")
 					i = tot_tmp.tamponi-var_tmp.tamponi+q;
 					printf("Variazione %s: %i\n", dateInterval, i);
 				}
-				if((strcmp(elab.r_date, "*") != 0) && (entry_gained == entry_to_gain))
+				if((strcmp(elab.r_date, "*") != 0) && (entry_gained == entries_to_gain))
 					saveInCache(cacheVariazione, dateInterval, i);
 			}
 			strcpy(filename_prec, filename_tmp);
 		}
 
-//		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
 		nextDate = &dateToConvert;
 		nextDate = nextDay(nextDate);
 		dateToConvert = *nextDate;
 		minDate = mktime(&dateToConvert)+TZ;
 //printf("LV MIN DATE: %s\n", ctime(&minDate));
-//		strftime(filename_tmp, sizeof(filename_tmp), "%d:%m:%Y", nextDate);
 		strftime(filename_tmp, sizeof(filename_tmp), "%d_%m_%Y", nextDate);
 		createFilePath(filepath_tmp, filename_tmp);
 //printf("NUOVO FILENAME %s\n", filename_tmp);
@@ -808,104 +806,6 @@ printf("STORE: %i, %s, %s, %s %s %i\n", p->id, p->aggr, p->type, p->p_date, p->r
 		if(!store.list)
 			store.list = p;
 	}
-
-}
-
-void floodingToDo() { 
-printf("FLOODING TO DO\n");
-	flooding = entry_to_gain = 0;
-	while(difftime(minDate, maxDate) <= 0) {
-		token = strtok(buffer_tmp, "-");	//taglio via RESPONSE-
-		fd_tmp = fopen(filepath_tmp, "r");	
-		if(fd_tmp == NULL) { //non ci sono file con quella data
-//printf("FILE NON PRESENTE\n");
-			//controllo se il server ne ha
-			token = strtok(NULL, "-");
-			while(token != NULL)		//finché c'è una entry nel RESPONSE msg
-			{
-//printf("P WHILE TOKEN: %s\n", token);
-				sscanf(token, "%s %i %i", &DS_info.date, &DS_info.numEntryN, &DS_info.numEntryT);	//legge la DS entry
-//printf("DS_INFO %s %i %i\n", DS_info.date, DS_info.numEntryN, DS_info.numEntryT);
-				if(strcmp(filename_tmp, DS_info.date) == 0) { //data nei risultati del DS
-					if((strcmp(elab.type, "N") == 0) && 
-					(DS_info.numEntryN > 0))			//qualcuno ha registrato dati quel giorno
-					{ 
-//printf("\tCASO N\n");
-						entry_to_gain += DS_info.numEntryN;
-printf("NUM DS ENTRY N: %i\tNUM_P_TO_CONTACT: %i\n", DS_info.numEntryN, entry_to_gain);
-						flooding = 1;
-					}
-					if((strcmp(elab.type, "T") == 0) && 	//qualcuno ha registrato dati quel giorno
-					(DS_info.numEntryT > 0))
-					{ 
-//printf("\tCASO T\n");
-						entry_to_gain += DS_info.numEntryT;
-						flooding = 1;
-					}
-printf("ENTRY TO GAIN: %i\n", entry_to_gain);
-				}
-				token = strtok(NULL, "-");
-			}
-		} else {	//il file è presente
-//printf("FILE PRESENTE\n");
-			token = strtok(NULL, "-");
-			while(token != NULL) {
-//printf("NP WHILE TOKEN: %s\n", token);
-				fseek(fd_tmp, 0, SEEK_END);
-				if(ftell(fd_tmp) > 0)		//se il file è non vuoto
-				{
-					//calcola num entry locali
-					while(fscanf(fd, "%s %i\n", &my_entry.type, &my_entry.quantity) != EOF) {
-						if(strcmp(my_entry.type, "N") == 0)
-							num_entry += my_entry.quantity;
-						if(strcmp(my_entry.type, "T") == 0)
-							num_entry += my_entry.quantity;
-					}					
-				} else {
-					num_entry = 0;
-				}
-				sscanf(token, "%s %i %i", &DS_info.date, 
-						&DS_info.numEntryN, &DS_info.numEntryT);
-//printf("DS_INFO: %s %i %i\n", DS_info.date, DS_info.numEntryN, DS_info.numEntryT);
-				if(strcmp(filename_tmp, DS_info.date) == 0) {	//data in risultati DS 
-//printf("SONO UGUALI\n");
-					if((strcmp(elab.type, "N") == 0) && 
-						(DS_info.numEntryN > num_entry))
-					{ 
-//printf("CASO N > 1\n");
-						entry_to_gain += (DS_info.numEntryN-num_entry);
-printf("NUM PEER N: %i\tNUM_P_TO_CONTACT: %i\n", DS_info.numEntryN, entry_to_gain);
-						flooding = 1;
-					}
-					if((strcmp(elab.type, "T") == 0) && 
-					(DS_info.numEntryT > num_entry))
-					{
-//printf("CASO T > 1\n");
-						if(DS_info.numEntryT > entry_to_gain){
-							entry_to_gain += (DS_info.numEntryT-num_entry);
-						}
-						flooding = 1;
-					}
-printf("ENTRY TO GAIN: %i\n", entry_to_gain);
-				}
-				token = strtok(NULL, "-");
-			}
-			fclose(fd_tmp);
-		}
-		
-		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
-		nextDate = &dateToConvert;
-//printf("FILENAME %s\n", filename_tmp);
-		nextDate = nextDay(nextDate);
-		dateToConvert = *nextDate;
-		minDate = mktime(&dateToConvert)+TZ;
-//printf("FTD MIN DATE: %s\n", ctime(&minDate));
-		strftime(filename_tmp, sizeof(filename_tmp), "%d_%m_%Y", nextDate);
-		createFilePath(filepath_tmp, filename_tmp);
-printf("NUOVO FILENAME %s\n\n", filename_tmp);
-		//ricopio la lista del DS
-		strcpy(buffer_tmp, buffer);
-	}
 }
 
 void initCaseVariables(char dateP[], char dateR[]) {
@@ -924,7 +824,6 @@ dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 		strcpy(filename_tmp, inizio_pandemia);
 
 		//creo le variabili time_t per il confronto
-//		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
 		minDate = mktime(&dateToConvert);
 		maxDate = mktime(todayDateTime);
@@ -941,7 +840,6 @@ dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 		strcpy(filename_tmp, dateP);
 
 		//creo le variaibli time_t per il confronto
-//		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
 		minDate = mktime(&dateToConvert);
 		maxDate = mktime(todayDateTime);
@@ -958,7 +856,6 @@ dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 		strcpy(filename_tmp, inizio_pandemia);
 
 		//creo le variaibli time_t per il confronto
-//		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
 		minDate = mktime(&dateToConvert);
 		strptime(dateR, "%d_%m_%Y", &dateToConvert);
@@ -973,7 +870,6 @@ dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 		strcpy(filename_tmp, dateP);
 
 		//creo le variaibli time_t per il confronto
-//		strptime(filename_tmp, "%d:%m:%Y", &dateToConvert);
 		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
 //printf("DATETOCONVERT: %i %i %i\n", dateToConvert.tm_hour, dateToConvert.tm_min, dateToConvert.tm_sec);
 		minDate = mktime(&dateToConvert);
@@ -982,6 +878,84 @@ dateToConvert.tm_hour = dateToConvert.tm_min = dateToConvert.tm_sec = 0;
 	}
 //	printf("MIN DATE: %s\n", ctime(&minDate));
 //	printf("MAX DATE: %s\n", ctime(&maxDate));
+}
+
+
+void getPeriodEntries() {
+	while(difftime(minDate, maxDate) <= 0) {
+		token = strtok(buffer_tmp, "-");
+		token = strtok(NULL, "-");
+		while(token != NULL)		//finché c'è una entry nel RESPONSE msg
+		{
+			sscanf(token, "%s %i %i", &DS_info.date, &DS_info.numEntryN, &DS_info.numEntryT);	//legge la DS entry
+//printf("DS_INFO %s %i %i\n", DS_info.date, DS_info.numEntryN, DS_info.numEntryT);
+			if(strcmp(filename_tmp, DS_info.date) == 0) { //data nei risultati del DS
+				if((strcmp(elab.type, "N") == 0) && (DS_info.numEntryN > 0))			//qualcuno ha registrato dati quel giorno
+					period_entries += DS_info.numEntryN;
+				if((strcmp(elab.type, "T") == 0) && (DS_info.numEntryT > 0))
+					period_entries += DS_info.numEntryT;
+			}
+			token = strtok(NULL, "-");
+		}
+		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
+		nextDate = &dateToConvert;
+//printf("FILENAME %s\n", filename_tmp);
+		nextDate = nextDay(nextDate);
+		dateToConvert = *nextDate;
+		minDate = mktime(&dateToConvert)+TZ;
+//printf("FTD MIN DATE: %s\n", ctime(&minDate));
+		strftime(filename_tmp, sizeof(filename_tmp), "%d_%m_%Y", nextDate);
+		createFilePath(filepath_tmp, filename_tmp);
+//printf("NUOVO FILENAME %s\n\n", filename_tmp);
+		//ricopio la lista del DS
+		strcpy(buffer_tmp, buffer);
+	}
+}
+
+int getLocalEntries() {
+	while(difftime(minDate, maxDate) <= 0) {
+		fd_tmp = fopen(filepath_tmp, "r");
+		if(fd_tmp != NULL) {	//se il èfile non presente
+			fseek(fd_tmp, 0, SEEK_END);
+			if(ftell(fd_tmp) > 0)		//se il file è non vuoto
+			{
+				fseek(fd_tmp, 0, SEEK_SET);				
+				while(fscanf(fd_tmp, "%s %i\n", &my_entry.type, &my_entry.quantity) != EOF) {
+					if(strcmp(my_entry.type, elab.type) == 0)
+						num_entries++;
+				}					
+			}
+		} 
+
+		strptime(filename_tmp, "%d_%m_%Y", &dateToConvert);
+		nextDate = &dateToConvert;
+//printf("FILENAME %s\n", filename_tmp);
+		nextDate = nextDay(nextDate);
+		dateToConvert = *nextDate;
+		minDate = mktime(&dateToConvert)+TZ;
+//printf("FTD MIN DATE: %s\n", ctime(&minDate));
+		strftime(filename_tmp, sizeof(filename_tmp), "%d_%m_%Y", nextDate);
+		createFilePath(filepath_tmp, filename_tmp);
+//printf("NUOVO FILENAME %s\n\n", filename_tmp);
+		//ricopio la lista del DS
+		strcpy(buffer_tmp, buffer);
+	}
+}
+
+void floodingToDo() { 
+printf("FLOODING TO DO\n");
+	flooding = entries_to_gain = num_entries = period_entries = 0;
+	getLocalEntries();	//inizializza num_entries
+printf("NUM ENTRY: %i\n", num_entries);
+	initCaseVariables(elab.p_date, elab.r_date);
+	getPeriodEntries();	//inizializza period_entries
+printf("PERIOD ENTRIES: %i\n", period_entries);
+	entries_to_gain = period_entries - num_entries;
+printf("ENTRIES_TO_GAIN: %i\n", entries_to_gain);
+	if (entries_to_gain == 0)
+		flooding = 0;
+	else
+		flooding = 1;
 }
 
 int main(int argc, char* argv[]){
@@ -1012,7 +986,7 @@ int main(int argc, char* argv[]){
 
 	srand(time(NULL));
 	createRegisterName();
-	strcpy(inizio_pandemia, "01_10_2020");
+	strcpy(inizio_pandemia, "01_03_2021");
 //	strptime(inizio_pandemia, "%d:%m:%Y", &dateToConvert);
 		strptime(inizio_pandemia, "%d_%m_%Y", &dateToConvert);
 	beginningDate = mktime(&dateToConvert);
@@ -1158,14 +1132,14 @@ printf("REPLY DATA CLOSE_NEIGH: %i\n", close_neig_response);
 
 				if((flooded == 1) || ((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) || (strcmp(my_neighbors.right_neighbor_ip, "-") == 0))) {
 					if((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) || (strcmp(my_neighbors.right_neighbor_ip, "-") == 0)) {
-	printf("SONO SOLO DUE\n");
+printf("SONO SOLO DUE\n");
 						//calcola e salva il risultato per dopo
 						if(strcmp(peer_req.aggr,"totale") == 0) {
-	printf("CALCOLO TOTALE\n");							
+printf("CALCOLO TOTALE\n");							
 							getLocalTotal(1, peer_req.type);
 						}
 						if(strcmp(peer_req.aggr,"variazione") == 0) {
-	printf("CALCOLO VARIAZIONE\n");
+printf("CALCOLO VARIAZIONE\n");
 							getLocalVariation(1, peer_req.type);
 						}	
 
@@ -1181,13 +1155,13 @@ printf("REPLY DATA CLOSE_NEIGH: %i\n", close_neig_response);
 							}
 						}
 						if (p != NULL)	{	//ho le entry
-	printf("P != NULL\n");
+printf("P != NULL\n");
 							if(strcmp(side, "L") == 0) 
 								sprintf(buffer, "REPLY_FLOOD %i L %s", peer_req.req_id, my_port);
 							if(strcmp(side, "R") == 0)
 								sprintf(buffer, "REPLY_FLOOD %i R %s", peer_req.req_id, my_port);
 						} else {
-	printf("P == NULL\n");
+printf("P == NULL\n");
 							if(strcmp(side, "L") == 0) 
 								sprintf(buffer, "REPLY_FLOOD %i L", peer_req.req_id);
 							if(strcmp(side, "R") == 0)
@@ -1201,6 +1175,7 @@ printf("REPLY DATA CLOSE_NEIGH: %i\n", close_neig_response);
 							connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 					}
 					if(flooded == 1) {
+printf("FLOODED == 1\n");
 						//cerco risultato
 						p = store.list;
 						if(p != NULL) {
@@ -1230,8 +1205,9 @@ printf("REPLY DATA CLOSE_NEIGH: %i\n", close_neig_response);
 							connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 						if(strcmp(side, "R") == 0)
 							connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
+
+						flooded = 0;
 					}
-					flooded = 0;
 				} else {	//altrimenti inoltra FLOOD
 printf("INOLTRO FLOODING\n");
 					//se ha entry aggiunge la propria porta e salva il 
@@ -1255,9 +1231,9 @@ printf("CALCOLO VARIAZIONE\n");
 			}
 
 			if(strcmp(command, "REPLY_FLOOD") == 0) {
-//printf("REQ_ID: %i\nFIRST_ARG: %s\n", elab.req_id, first_arg);
 				if(elab.req_id == atoi(first_arg)) {	//se è il peer richiedente
 printf("RICHIESTA TORNATA AL MITTENTE\n");
+//printf("REQ_ID: %i\nFIRST_ARG: %s\n", elab.req_id, first_arg);
 					//caso due peer
 					if((strcmp(my_neighbors.left_neighbor_ip, "-") == 0) || (strcmp(my_neighbors.right_neighbor_ip, "-") == 0)) {
 						connectToPeer(localhost, third_arg);
@@ -1265,7 +1241,7 @@ printf("RICHIESTA TORNATA AL MITTENTE\n");
 						send_(addr);
 					} else {	//caso più di due peer
 						close_neig_response++;
-//printf("CLOSE_NEIGH: %i\n", close_neig_response);
+printf("CLOSE_NEIGH: %i\n", close_neig_response);
 						if(atoi(third_arg) > 0)
 							sprintf(peer_to_contact+strlen(peer_to_contact), "%s-", fourth_arg);
 printf("PEER_TO_CONTACT: %s\n", peer_to_contact);
@@ -1312,19 +1288,30 @@ printf("INOLTRO REPLY FLOOD\n");
 						}
 					}
 					if (p != NULL)	{	//ho le entry
-						if(atoi(third_arg) == 0)
-							sprintf(fourth_arg, "%i", my_port);
+printf("HO LE ENTRY\n");
+						if(atoi(third_arg) == 0) {
+							sprintf(fourth_arg, "%s", my_port);
+printf("FOURTH ARG: %s \n", fourth_arg);
+						}
 						else {
+//printf("THIRD ARG: %s -> atoi : %i  ->  atoi+1: %i\n", third_arg, atoi(third_arg), atoi(third_arg)+1);
 							strcat(fourth_arg, "-");
 							strcat(fourth_arg, my_port);
 						}
-						sprintf(buffer, "%i %s %i %s", fourth_arg);
+						i = atoi(third_arg)+1;
+						sprintf(third_arg, "%i", i);
+//printf("THIRD ARG: %s \n", third_arg);
+						sprintf(buffer, "REPLY_FLOOD %s %s %s %s", first_arg, second_arg, third_arg, fourth_arg);
+					} else {
+printf("NON HO LE ENTRY\n");
+						strcpy(buffer, input);
 					}
 					if(strcmp(side, "L") == 0) 
 						connectToPeer(my_neighbors.right_neighbor_ip, my_neighbors.right_neighbor_port);
 					if(strcmp(side, "R") == 0)	
 						connectToPeer(my_neighbors.left_neighbor_ip, my_neighbors.left_neighbor_port);
 					send_(addr);
+					flooded = 0;
 				}
 			}
 
@@ -1335,7 +1322,7 @@ printf("INOLTRO REPLY FLOOD\n");
 printf("RISULTATO IN TESTA\n");
 					sprintf(buffer, "REPLY_ENTRIES %i", p->id);
 					if(strcmp(p->aggr, "totale") == 0) {
-						sprintf(buffer+strlen(buffer), " %i %i", p->total, p->num_entry);
+						sprintf(buffer+strlen(buffer), " %i %i", p->total, p->num_entries);
 					}
 					if(strcmp(p->aggr, "variazione") == 0) {
 						sprintf(buffer+strlen(buffer), "%s", p->variation);
@@ -1349,7 +1336,7 @@ printf("ALTRIMENTI\n");
 					}
 					sprintf(buffer, "REPLY_ENTRIES %i ", p->id);
 					if(strcmp(p->aggr, "totale") == 0) {
-						sprintf(buffer+strlen(buffer), "%i %i", p->next->total, p->next->num_entry);
+						sprintf(buffer+strlen(buffer), "%i %i", p->next->total, p->next->num_entries);
 					}
 					if(strcmp(p->aggr, "variazione") == 0) {
 						sprintf(buffer+strlen(buffer), "%s", p->next->variation);
@@ -1358,7 +1345,7 @@ printf("ALTRIMENTI\n");
 				connectToPeer(localhost, second_arg);
 				send_(addr);
 				printf("STORE NUM: %i\n", store.num);
-				printf("STORE: \n\t%i\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%i\n\t%i\n", store.list->id, store.list->aggr, store.list->type, store.list->p_date, store.list->r_date, store.list->variation, store.list->total, store.list->num_entry);
+				printf("STORE: \n\t%i\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%i\n\t%i\n", store.list->id, store.list->aggr, store.list->type, store.list->p_date, store.list->r_date, store.list->variation, store.list->total, store.list->num_entries);
 
 				if(store.num == 1){
 					free(store.list->next);
@@ -1372,6 +1359,7 @@ printf("ALTRIMENTI\n");
 				}
 				store.num--;
 				printf("STORE NUM: %i\n", store.num);
+				flooded = 0;
 			}
 
 			if(strcmp(command, "REPLY_ENTRIES") == 0) {
@@ -1407,7 +1395,7 @@ printf("VAR_PARZIALE: %s\n", var_parziale);
 						getLocalVariation(2, elab.type);
 						strcpy(var_parziale, "");
 					}
-					if(entry_gained < entry_to_gain)
+					if(entry_gained < entries_to_gain)
 						printf("(Risultato parziale: alcuni peer non attivi)\n");
 					counter_left = counter_right = 0;
 				}
@@ -1502,6 +1490,7 @@ printf("VAR_PARZIALE: %s\n", var_parziale);
 			}	
 
 			if((strcmp(command, "get") == 0) && (valid_input == 1)) {
+printf("----------------------------------------------------\n");
 				valid_period = parsePeriod(third_arg);
 				if((strcmp(first_arg, "totale") != 0 && strcmp(first_arg, "variazione") != 0) ||
 				    (strcmp(second_arg, "N") != 0) && (strcmp(second_arg, "T") != 0) ||
