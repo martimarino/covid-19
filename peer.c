@@ -594,9 +594,7 @@ int searchInCache(char cache[], int caso) {
 }
 
 void getLocalTotal(int caso, char type[]) { printf("GET LOCAL TOTAL \n");
-	num_entries = 0;
-	tot_tmp.nuoviCasi = 0;
-	tot_tmp.tamponi = 0;
+	num_entries = tot_tmp.nuoviCasi = tot_tmp.tamponi = 0;
 	while(difftime(minDate, maxDate) <= 0) {
 //printf("MinDate: %s MaxDate: %s\n", ctime(&minDate), ctime(&maxDate));
 		fd_tmp = fopen(filepath_tmp, "r");
@@ -691,7 +689,7 @@ void getLocalTotal(int caso, char type[]) { printf("GET LOCAL TOTAL \n");
 void getLocalVariation(int caso, char type[]){   printf("GET LOCAL VARIATION\n");
 	strcpy(filename_prec, filename_tmp);
 	sprintf(variation, "");
-	tot_tmp.nuoviCasi = tot_tmp.tamponi = 0;
+	tot_tmp.nuoviCasi = tot_tmp.tamponi = num_entries = 0;
 	while(difftime(minDate, maxDate) <= 0) {
 		fd_tmp = fopen(filepath_tmp, "r");
 		if(fd_tmp != NULL) {
@@ -702,10 +700,14 @@ void getLocalVariation(int caso, char type[]){   printf("GET LOCAL VARIATION\n")
 					&entry_tmp.type, &entry_tmp.quantity) != EOF)
 			{
 //printf("ENTRY: %s %i\n", entry_tmp.type, entry_tmp.quantity);
-				if(strcmp(entry_tmp.type, "N") == 0)
+				if((strcmp(entry_tmp.type, "N") == 0) && (strcmp(type, "N") == 0)) {
 					var_tmp.nuoviCasi += entry_tmp.quantity;
-				if(strcmp(entry_tmp.type, "T") == 0) 
+					num_entries++;
+				}
+				if((strcmp(entry_tmp.type, "T") == 0) && (strcmp(type, "T")) == 0) {
 					var_tmp.tamponi += entry_tmp.quantity;
+					num_entries++;
+				}
 			}
 			fclose(fd_tmp);
 		}
@@ -735,12 +737,12 @@ void getLocalVariation(int caso, char type[]){   printf("GET LOCAL VARIATION\n")
 				if(strcmp(type, "N") == 0) {
 					i = tot_tmp.nuoviCasi-var_tmp.nuoviCasi;
 					if(i != 0)
-						sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
+						sprintf(variation+strlen(variation), "%s %i/", dateInterval, i);
 				}
 				if(strcmp(type, "T") == 0) {
 					i = tot_tmp.tamponi-var_tmp.tamponi;
 					if(i != 0)
-						sprintf(variation+strlen(variation), "/%s %i", dateInterval, i);
+						sprintf(variation+strlen(variation), "%s %i/", dateInterval, i);
 				}				
 			}
 			if(caso == 2) {
@@ -796,6 +798,7 @@ void getLocalVariation(int caso, char type[]){   printf("GET LOCAL VARIATION\n")
 		}
 		store.num++;
 		p->id = peer_req.req_id;
+		p->num_entries = num_entries;
 		strcpy(p->aggr, peer_req.aggr);
 		strcpy(p->type, peer_req.type);
 		strcpy(p->p_date, peer_req.p_date);
@@ -1325,7 +1328,7 @@ printf("RISULTATO IN TESTA\n");
 						sprintf(buffer+strlen(buffer), " %i %i", p->total, p->num_entries);
 					}
 					if(strcmp(p->aggr, "variazione") == 0) {
-						sprintf(buffer+strlen(buffer), "%s", p->variation);
+						sprintf(buffer+strlen(buffer), " %i %s", p->num_entries, p->variation);
 					}
 				} else {
 printf("ALTRIMENTI\n");
@@ -1339,7 +1342,7 @@ printf("ALTRIMENTI\n");
 						sprintf(buffer+strlen(buffer), "%i %i", p->next->total, p->next->num_entries);
 					}
 					if(strcmp(p->aggr, "variazione") == 0) {
-						sprintf(buffer+strlen(buffer), "%s", p->next->variation);
+						sprintf(buffer+strlen(buffer), "%i %s", p->next->num_entries, p->next->variation);
 					}
 				}
 				connectToPeer(localhost, second_arg);
@@ -1375,10 +1378,12 @@ printf("ENTRY GAINED: %i\n", entry_gained);
 printf("VAR_PARZIALE: %s\n", var_parziale);
 				if(strcmp(elab.aggr, "variazione") == 0) {
 					strcpy(buffer, input);
-					token = strtok(buffer, "/");  //elimina REPLY_ENTRIES e id		
+					token = strtok(buffer, " ");  //elimina REPLY_ENTRIES	
+					token = strtok(NULL, " ");	//elimina id
+					token = strtok(NULL, " ");	//elimina num_entries
 					token = strtok(NULL, "\0");
-					strcat(var_parziale, "/");
 					strcat(var_parziale, token);
+					entry_gained += atoi(second_arg);
 printf("VAR_PARZIALE: %s\n", var_parziale);
 				}
 				
