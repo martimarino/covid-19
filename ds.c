@@ -45,7 +45,6 @@ struct Peer {
 	char port[PORT_LEN];
 };
 struct Peer peer_registered[MAX_PEER];
-int already_reg = 0;
 
 //variabili temporanee per la comunicazione dei vicini
 char left_ip[ADDR_LEN];
@@ -238,50 +237,39 @@ int main(int argc, char* argv[]) {
 			howmany = parse_string(buffer);	
 
 			if(strcmp(command, "BOOT") == 0) {
-
-				already_reg = 0;
-				for(i = 0; i < num_peer; i++) {
-					if(strcmp(second_arg, peer_registered[i].port) == 0) {
-						already_reg = 1;
-						break;
-					}
-				} 
-				printf("ALR: %i\n", already_reg);
 				
 				//controllo sul numero di peer registrati
-				if((num_peer == MAX_PEER) && (already_reg == 0)) {
+				if(num_peer == MAX_PEER) {
 					printf("Errore: raggiunto il numero massimo di peer\n");
 					sprintf(buffer, "%s", "MAX_EXC");
 					sendToPeer(connecting_addr);
 
 				} else {	//c'è ancora spazio nel buffer
-					
-					if(already_reg == 0) {
-						//registrazione del nuovo peer
-						for(i = 0; i < num_peer; i++) {
-							if ((num_peer == 0) || (atoi(second_arg) < atoi(peer_registered[i].port)))
-								break;
-						}  		//i è l'indice in cui inserire il nuovo peer
+	
+					//registrazione del nuovo peer
+					for(i = 0; i < num_peer; i++) {
+						if ((num_peer == 0) || (atoi(second_arg) < atoi(peer_registered[i].port)))
+							break;
+					}  		//i è l'indice in cui inserire il nuovo peer
 
-						// faccio shift
-						// (inserimento tra due peer)
-						if(i < num_peer) {
-							for(j = num_peer-1; j >= i; j--) {
-								peer_registered[j+1] = peer_registered[j];
-								peer_addr[j+1] = peer_addr[j];
-							}
+					// faccio shift
+					// (inserimento tra due peer)
+					if(i < num_peer) {
+						for(j = num_peer-1; j >= i; j--) {
+							peer_registered[j+1] = peer_registered[j];
+							peer_addr[j+1] = peer_addr[j];
 						}
-			
-						//altrimenti aggiungo di seguito
-						peer_addr[i] = connecting_addr;
-
-						strcpy(peer_registered[i].ip, first_arg);
-						strcpy(peer_registered[i].port, second_arg);
-
-						num_peer++;
-
-						printf("NUM_PEER: %i\n", num_peer);
 					}
+		
+					//altrimenti aggiungo di seguito
+					peer_addr[i] = connecting_addr;
+
+					strcpy(peer_registered[i].ip, first_arg);
+					strcpy(peer_registered[i].port, second_arg);
+
+					num_peer++;
+
+					printf("NUM_PEER: %i\n", num_peer);
 
 					//comunico registrazione avvenuta
 					printf("Peer registrato\n");
@@ -300,14 +288,14 @@ int main(int argc, char* argv[]) {
 						if (num_peer == 2) {	//un solo vicino
 							
 							if(i == 1) {	//secondo peer in posizione 1
-								if(already_reg == 0) {
-									//aggiorno i vicini di 0
-									strcpy(right_ip, peer_registered[1].ip);
-									strcpy(right_port, peer_registered[1].port);
-									sprintf(buffer, "NEIGHBORS - - %s %s", right_ip, right_port);
-									printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
-									sendToPeer(peer_addr[0]);
-								}
+
+								//aggiorno i vicini di 0
+								strcpy(right_ip, peer_registered[1].ip);
+								strcpy(right_port, peer_registered[1].port);
+								sprintf(buffer, "NEIGHBORS - - %s %s", right_ip, right_port);
+								printf("Aggiorno vicini di %s: %s\n", peer_registered[0].port, buffer);
+								sendToPeer(peer_addr[0]);
+				
 								//invio a 1 il vicino 0
 								strcpy(left_ip, peer_registered[0].ip);
 								strcpy(left_port, peer_registered[0].port);
@@ -316,14 +304,12 @@ int main(int argc, char* argv[]) {
 								sendToPeer(peer_addr[1]);
 							} else {		//nuovo peer in prima posizione
 								
-								if(already_reg == 0) {
-									//aggiorno i vicini di 1
-									strcpy(left_ip, peer_registered[0].ip);
-									strcpy(left_port, peer_registered[0].port);
-									sprintf(buffer, "NEIGHBORS %s %s - -", left_ip, left_port);
-									printf("Invio vicini %s: %s\n", peer_registered[1].port, buffer);
-									sendToPeer(peer_addr[1]);
-								}
+								//aggiorno i vicini di 1
+								strcpy(left_ip, peer_registered[0].ip);
+								strcpy(left_port, peer_registered[0].port);
+								sprintf(buffer, "NEIGHBORS %s %s - -", left_ip, left_port);
+								printf("Invio vicini %s: %s\n", peer_registered[1].port, buffer);
+								sendToPeer(peer_addr[1]);
 
 								//invio a 0 il vicino 1
 								strcpy(right_ip, peer_registered[1].ip);
@@ -337,23 +323,22 @@ int main(int argc, char* argv[]) {
 
 					} else if(num_peer > 2) {
 
-						if(already_reg == 0) {
-							//comunico ai vicini di i il nuovo vicino
-							for(j = 0; j < num_peer; j++) {	//cerco i vicini del peer inserito
+						//comunico ai vicini di i il nuovo vicino
+						for(j = 0; j < num_peer; j++) {	//cerco i vicini del peer inserito
 
-								if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
-								
-									strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
-									strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
-									strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
-									strcpy(right_port, peer_registered[(j+1)%num_peer].port);
-									sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
-								
-									printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
-									sendToPeer(peer_addr[j]);
-								}
+							if((j == ((i+num_peer-1)%num_peer)) || (j == ((i+1)%num_peer))) {
+							
+								strcpy(left_ip, peer_registered[(j+num_peer-1)%num_peer].ip);
+								strcpy(left_port, peer_registered[(j+num_peer-1)%num_peer].port);
+								strcpy(right_ip, peer_registered[(j+1)%num_peer].ip);
+								strcpy(right_port, peer_registered[(j+1)%num_peer].port);
+								sprintf(buffer, "NEIGHBORS %s %s %s %s", left_ip, left_port, right_ip, right_port);
+							
+								printf("Aggiorno i vicini di %s: %s\n", peer_registered[j].port, buffer);
+								sendToPeer(peer_addr[j]);
 							}
 						}
+
 						//invio al nuovo peer i propri vicini
 						strcpy(left_ip, peer_registered[(i-1+num_peer)%num_peer].ip);
 						strcpy(left_port, peer_registered[(i-1+num_peer)%num_peer].port);
@@ -512,7 +497,7 @@ int main(int argc, char* argv[]) {
 				}
 			}
 
-			if(strcmp(command, "SOME_ENTRIES") == 0) {
+			if(strcmp(command, "TODAY_ENTRIES") == 0) {
 			
 				DS_entry.num_entry_N += atoi(first_arg);
 				DS_entry.num_entry_T += atoi(second_arg);
